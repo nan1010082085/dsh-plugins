@@ -5,6 +5,10 @@
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js"
+  },
   "files": [
     "lib",
     "cordis.patch.yml",
