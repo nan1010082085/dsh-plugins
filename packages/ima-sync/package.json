@@ -1,0 +1,39 @@
+{
+  "name": "dsh-plugin-ima-sync",
+  "version": "0.1.0",
+  "description": "DSH plugin: auto-upload conversation progress to Tencent IMA (daily note + Work knowledge base), mirroring the local Claude Code ima-upload workflow",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "plugin",
+    "ima",
+    "tencent-ima",
+    "knowledge-base",
+    "deepseek-harness"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nan1010082085/dsh-plugin-ima-sync.git"
+  },
+  "homepage": "https://github.com/nan1010082085/dsh-plugin-ima-sync#readme",
+  "bugs": {
+    "url": "https://github.com/nan1010082085/dsh-plugin-ima-sync/issues"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,18 @@
+# examples/cordis.patch.yml
+# 复制到 ~/.dsh/profiles/web/cordis.patch.yml 并按需修改。
+# 把 <your-...> 占位符替换为你自己的 IMA 凭证（不要提交真实 key 到公开仓库）。
+- id: ima-sync
+  config:
+    enabled: true
+    triggerOnTurnEnd: true
+    triggerOnSessionEnd: true
+    clientId: <your-ima-openapi-client-id>
+    apiKey: <your-ima-openapi-api-key>
+    workKbId: <your-ima-work-knowledge-base-id>
+    # imaUploadBin: ''      # 默认 ~/.local/bin/ima-upload
+    # projectsFile: ''      # 默认 ~/.config/ima/projects.json
+    # cacheDir: ''          # 默认 ~/.cache/ima/daily-notes
+    # defaultProject: ''    # cwd 未命中映射时的兜底项目名
+    # maxPromptLength: 300
+    # maxDetailLength: 20000
+    # timeoutMs: 120000

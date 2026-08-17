@@ -1,0 +1,24 @@
+# dsh-plugin-ima-sync bundle patch: register the ima-sync plugin row.
+#
+# 将 DSH 对话进度自动上传到腾讯 IMA（按天笔记 + Work 知识库）。
+# 安装后如需调整配置，在 profile 的 cordis.patch.yml 中按 id 覆盖：
+#
+#   - id: ima-sync
+#     config:
+#       enabled: true
+#       triggerOnTurnEnd: true
+#       triggerOnSessionEnd: true
+#       # 凭证默认读取 ~/.config/ima/client_id 与 api_key（与本地 Claude/Cursor 共用）
+#       # clientId: ''
+#       # apiKey: ''
+#       # workKbId: ''          # 留空则仅创建笔记，不关联知识库
+#       # imaUploadBin: ''      # 默认 ~/.local/bin/ima-upload（本地脚本，含项目映射/每日笔记缓存）
+#       # projectsFile: ''      # 默认 ~/.config/ima/projects.json
+#       # maxPromptLength: 300
+#       # maxDetailLength: 20000
+
+- insert:
+    - id: ima-sync
+      name: 'dsh-plugin-ima-sync'
+      config:
+        enabled: true
