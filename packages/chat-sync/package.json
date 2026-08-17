@@ -1,0 +1,47 @@
+{
+  "name": "dsh-chat-sync",
+  "version": "0.1.0",
+  "description": "DSH plugin: browse and live-sync local AI CLI conversations (Claude Code, Codex CLI, Cursor Agent) inside the dsh web GUI",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nan1010082085/dsh-chat-sync.git"
+  },
+  "homepage": "https://github.com/nan1010082085/dsh-chat-sync#readme",
+  "bugs": {
+    "url": "https://github.com/nan1010082085/dsh-chat-sync/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "claude-code",
+    "codex",
+    "cursor",
+    "conversation-sync"
+  ],
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  }
+}
