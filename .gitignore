@@ -1,0 +1,11 @@
+# dependencies
+node_modules/
+
+# logs / local state
+*.log
+.DS_Store
+
+# local credential fallback (never commit real keys)
+.env
+.env.*
+*.local
