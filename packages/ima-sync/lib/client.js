@@ -1,19 +1,17 @@
 /**
  * dsh-plugin-ima-sync - browser half (hand-written, zero-build).
  *
- * Loaded by the dsh web shell at /plugins/dsh-plugin-ima-sync/client.js and
- * materialized through window.__ModuleLoader__. Mounts a sidebar entry and
- * a center-column panel for configuring IMA sync settings.
+ * Loaded by the dsh web shell at /plugins/dsh-plugin-ima-sync/client.js.
+ * Registers a settings tab for IMA sync configuration.
  */
 window.__ModuleLoader__.load({
-	id: "dsh-ima-sync",
+	id: "dsh-plugin-ima-sync",
 	factory: (require) => {
 		var module = { exports: {} };
 		var exports = module.exports;
 
 		const React = require("react");
-		const { createRoot } = require("react-dom/client");
-		const { useState, useEffect, useRef, useCallback } = React;
+		const { useState, useEffect, useCallback } = React;
 		const h = React.createElement;
 
 		/* ───────────── constants & helpers ───────────── */
@@ -42,69 +40,9 @@ window.__ModuleLoader__.load({
 			return body;
 		}
 
-		/* ───────────── panel controller ───────────── */
-
-		const OTHER_PANEL_ATTRS = ["data-dsh-taskboard-active", "data-dsh-ssh-active", "data-dsh-chatsync-active"];
-		const ACTIVATE_EVENT = "dsh-panel-activate";
-
-		class PanelController {
-			constructor() {
-				this.panelOpen = false;
-				this.listeners = new Set();
-			}
-			getSnapshot() {
-				return { panelOpen: this.panelOpen };
-			}
-			subscribe(fn) {
-				this.listeners.add(fn);
-				return () => this.listeners.delete(fn);
-			}
-			open() {
-				if (this.panelOpen) return;
-				this.panelOpen = true;
-				const root = document.documentElement;
-				root.setAttribute("data-dsh-imasync-active", "");
-				for (const attr of OTHER_PANEL_ATTRS) root.removeAttribute(attr);
-				window.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { detail: "imasync" }));
-				this.notify();
-			}
-			close() {
-				if (!this.panelOpen) return;
-				this.panelOpen = false;
-				document.documentElement.removeAttribute("data-dsh-imasync-active");
-				this.notify();
-			}
-			toggle() {
-				if (this.panelOpen) this.close();
-				else this.open();
-			}
-			notify() {
-				for (const fn of [...this.listeners]) fn();
-			}
-		}
-
 		/* ───────────── styles ───────────── */
 
 		const CSS = [
-			/* center-column takeover */
-			"[data-pane='conversation'], [class*='centerCol'] { position: relative; }",
-			"[data-dsh-imasync-view] { position: absolute; inset: 0; display: none; z-index: 60; background: var(--dsw-alias-bg-base); }",
-			"html[data-dsh-imasync-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]):not([data-dsh-chatsync-active]) [data-dsh-imasync-view] { display: block; }",
-			"html[data-dsh-imasync-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]):not([data-dsh-chatsync-active]) [data-pane='conversation'] > :not([data-dsh-imasync-view]),",
-			"html[data-dsh-imasync-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]):not([data-dsh-chatsync-active]) [class*='centerCol'] > :not([data-dsh-imasync-view]) { display: none !important; }",
-
-			/* sidebar entry */
-			".ims-entry { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 12px; background: transparent; border: none; border-radius: 8px; color: var(--dsw-alias-label-secondary); cursor: pointer; font-size: 13px; white-space: nowrap; }",
-			".ims-entry:hover { background: var(--dsw-specific-sidebar-nav-item-hover, rgba(127,127,127,.12)); color: var(--dsw-alias-label-primary); }",
-			".ims-entry[data-active] { background: var(--dsw-specific-sidebar-nav-item-active, rgba(127,127,127,.16)); color: var(--dsw-alias-label-primary); font-weight: 600; }",
-			".ims-entryIcon { display: inline-flex; align-items: center; justify-content: center; flex: none; }",
-			".ims-entryLabel { overflow: hidden; text-overflow: ellipsis; }",
-			"[data-dsh-frame][data-sidebar-collapsed] .ims-entry { justify-content: center; padding: 0; }",
-			"[data-dsh-frame][data-sidebar-collapsed] .ims-entryLabel { display: none; }",
-
-			/* panel frame */
-			".ims-panel { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); padding: 20px; overflow-y: auto; }",
-			".ims-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; }",
 			".ims-section { margin-bottom: 24px; }",
 			".ims-sectionTitle { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--dsw-alias-label-primary); }",
 			".ims-field { margin-bottom: 12px; }",
@@ -112,10 +50,9 @@ window.__ModuleLoader__.load({
 			".ims-input { width: 100%; max-width: 400px; height: 32px; border-radius: 6px; border: 1px solid var(--dsw-alias-border, rgba(127,127,127,.25)); background: var(--dsw-alias-bg-elevated, rgba(127,127,127,.06)); color: var(--dsw-alias-label-primary); padding: 0 10px; font-size: 13px; outline: none; }",
 			".ims-input:focus { border-color: rgba(127,127,127,.45); }",
 			".ims-input::placeholder { color: var(--dsw-alias-label-secondary); opacity: .6; }",
-			".ims-textarea { width: 100%; max-width: 400px; min-height: 60px; border-radius: 6px; border: 1px solid var(--dsw-alias-border, rgba(127,127,127,.25)); background: var(--dsw-alias-bg-elevated, rgba(127,127,127,.06)); color: var(--dsw-alias-label-primary); padding: 8px 10px; font-size: 13px; outline: none; resize: vertical; }",
-			".ims-textarea:focus { border-color: rgba(127,127,127,.45); }",
 			".ims-checkbox { display: flex; align-items: center; gap: 8px; cursor: pointer; }",
-			".ims-checkbox input { width: 16px; height: 16px; cursor: pointer; }",
+			".ims-checkbox input[type='checkbox'] { width: 16px; height: 16px; cursor: pointer; }",
+			".ims-checkbox input[type='radio'] { width: 14px; height: 14px; cursor: pointer; margin: 0; }",
 			".ims-checkboxLabel { font-size: 13px; color: var(--dsw-alias-label-primary); }",
 			".ims-hint { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 4px; }",
 			".ims-buttons { display: flex; gap: 8px; margin-top: 16px; }",
@@ -128,7 +65,6 @@ window.__ModuleLoader__.load({
 			".ims-status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 13px; }",
 			".ims-status-success { background: rgba(52,199,89,.15); color: #34c759; }",
 			".ims-status-error { background: rgba(255,59,48,.15); color: #ff3b30; }",
-			".ims-status-info { background: rgba(62,132,255,.15); color: #3e84ff; }",
 		].join("\n");
 
 		function injectStyles() {
@@ -139,75 +75,116 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(el);
 		}
 
-		/* ───────────── sidebar entry ───────────── */
+		/* ───────────── locale ───────────── */
 
-		const ENTRY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h12v8H2z"/><path d="M2 4l6 5 6-5"/><path d="M4 10h3"/><path d="M4 12h5"/></svg>';
+		const NS = "settings.imaSync";
 
-		function sidebarRoot() {
-			const column = document.querySelector('[data-pane="sidebar"], [class*="sidebarCol"]');
-			if (!column) return undefined;
-			const logoOwner = column.querySelector('[class*="logoRow"]')?.parentElement;
-			return logoOwner ?? column.firstElementChild ?? undefined;
-		}
+		const zh = {
+			nav: "IMA 同步",
+			tab: "IMA 同步",
+			loading: "加载中...",
+			loadError: "加载配置失败: ",
+			saveSuccess: "配置已保存",
+			saveError: "保存失败: ",
+			testSuccess: "连接成功",
+			testError: "连接失败: ",
+			saving: "保存中...",
+			save: "保存配置",
+			testing: "测试中...",
+			test: "测试连接",
+			general: "基本设置",
+			enable: "启用插件",
+			enableHint: "禁用后插件完全不注册监听",
+			triggerTurn: "每轮对话结束时上传进度",
+			triggerSession: "会话销毁时上传总结",
+			mode: "笔记模式",
+			modeProjectDate: "项目+日期",
+			modeProjectDateDesc: "每个项目独立笔记：[项目名] YYYY-MM-DD",
+			modeDaily: "每日日报",
+			modeDailyDesc: "所有项目合并到一个日期笔记：YYYY-MM-DD",
+			credentials: "IMA 凭证",
+			credHint: "从 https://ima.qq.com/agent-interface 获取",
+			useManual: "使用手动配置覆盖（优先级最高）",
+			clientId: "Client ID",
+			apiKey: "API Key",
+			workKbId: "Work 知识库 ID（可选）",
+			manualHint: "手动配置将覆盖环境变量和本地文件",
+			placeholderCred: "留空则读取环境变量或本地文件",
+			placeholderKb: "留空则不关联知识库",
+			projectKb: "项目知识库映射",
+			projectKbHint: "为不同项目配置不同的 IMA 知识库 ID",
+			projectName: "项目名",
+			kbIdPlaceholder: "知识库 ID",
+			add: "添加",
+			delete: "删除",
+			advanced: "高级设置",
+			imaUploadBin: "ima-upload 脚本路径",
+			imaUploadBinHint: "留空使用默认路径；脚本不存在时走直接 API",
+			projectsFile: "项目映射文件",
+			defaultProject: "默认项目名",
+			defaultProjectHint: "留空使用目录名",
+			placeholderBin: "~/.local/bin/ima-upload",
+			placeholderProjects: "~/.config/ima/projects.json",
+			placeholderDefault: "留空使用目录名",
+		};
 
-		function mountSidebarEntry(controller) {
-			if (document.querySelector("[data-dsh-imasync-entry]") !== null) return () => {};
-			const entry = document.createElement("button");
-			entry.type = "button";
-			entry.dataset.dshImasyncEntry = "";
-			entry.className = "ims-entry";
-			entry.setAttribute("aria-label", "IMA 同步配置");
-			entry.title = "配置 IMA 同步设置";
-			entry.innerHTML = '<span class="ims-entryIcon">' + ENTRY_ICON + '</span><span class="ims-entryLabel">IMA 配置</span>';
-			entry.addEventListener("click", () => controller.toggle());
+		const en = {
+			nav: "IMA Sync",
+			tab: "IMA Sync",
+			loading: "Loading...",
+			loadError: "Failed to load config: ",
+			saveSuccess: "Config saved",
+			saveError: "Save failed: ",
+			testSuccess: "Connection successful",
+			testError: "Connection failed: ",
+			saving: "Saving...",
+			save: "Save Config",
+			testing: "Testing...",
+			test: "Test Connection",
+			general: "General",
+			enable: "Enable Plugin",
+			enableHint: "When disabled, the plugin registers no listeners",
+			triggerTurn: "Upload progress at end of each turn",
+			triggerSession: "Upload summary on session dispose",
+			mode: "Note Mode",
+			modeProjectDate: "Project + Date",
+			modeProjectDateDesc: "Separate note per project: [Project] YYYY-MM-DD",
+			modeDaily: "Daily Report",
+			modeDailyDesc: "All projects merged into one daily note: YYYY-MM-DD",
+			credentials: "IMA Credentials",
+			credHint: "Get from https://ima.qq.com/agent-interface",
+			useManual: "Use manual override (highest priority)",
+			clientId: "Client ID",
+			apiKey: "API Key",
+			workKbId: "Work Knowledge Base ID (optional)",
+			manualHint: "Manual config overrides env vars and local files",
+			placeholderCred: "Leave empty to read from env or local file",
+			placeholderKb: "Leave empty to skip knowledge base",
+			projectKb: "Project Knowledge Base Mapping",
+			projectKbHint: "Configure different IMA knowledge base IDs per project",
+			projectName: "Project Name",
+			kbIdPlaceholder: "Knowledge Base ID",
+			add: "Add",
+			delete: "Delete",
+			advanced: "Advanced",
+			imaUploadBin: "ima-upload Script Path",
+			imaUploadBinHint: "Leave empty for default; falls back to API if missing",
+			projectsFile: "Project Mapping File",
+			defaultProject: "Default Project Name",
+			defaultProjectHint: "Leave empty to use directory name",
+			placeholderBin: "~/.local/bin/ima-upload",
+			placeholderProjects: "~/.config/ima/projects.json",
+			placeholderDefault: "Leave empty to use directory name",
+		};
 
-			let rootObserver;
-			let placed = false;
-			const syncActive = () => {
-				entry.setAttribute("data-active", controller.panelOpen ? "1" : "0");
-			};
-			controller.subscribe(syncActive);
+		/* ───────────── config panel component ───────────── */
 
-			const tryPlace = () => {
-				if (placed && !document.body.contains(entry)) {
-					if (rootObserver) rootObserver.disconnect();
-					placed = false;
-				}
-				if (placed) return;
-				const root = sidebarRoot();
-				if (!root) return;
-				if (entry.isConnected) { placed = true; return; }
-				let anchor = root.querySelector('button[class*="newSession"]');
-				if (!anchor) {
-					for (const child of root.children) if (child.tagName === "BUTTON") { anchor = child; break; }
-				}
-				const row = anchor ? anchor.closest('[class*="logoRow"]') : null;
-				const base = row && row.parentElement === root ? row : anchor;
-				const ref = base ? base.nextElementSibling : null;
-				if (ref) root.insertBefore(entry, ref);
-				else root.appendChild(entry);
-				placed = true;
-				rootObserver = new MutationObserver(tryPlace);
-				rootObserver.observe(root, { childList: true, subtree: true });
-			};
-
-			const waitObserver = new MutationObserver(tryPlace);
-			waitObserver.observe(document.body, { childList: true, subtree: true });
-			tryPlace();
-			return () => {
-				waitObserver.disconnect();
-				if (rootObserver) rootObserver.disconnect();
-				entry.remove();
-			};
-		}
-
-		/* ───────────── React: config panel ───────────── */
-
-		function ConfigPanel() {
+		function ImaSyncSettings({ t }) {
 			const [config, setConfig] = useState({
 				enabled: true,
 				triggerOnTurnEnd: true,
 				triggerOnSessionEnd: true,
+				mode: "project+date",
 				clientId: "",
 				apiKey: "",
 				workKbId: "",
@@ -218,19 +195,17 @@ window.__ModuleLoader__.load({
 				maxPromptLength: 300,
 				maxDetailLength: 20000,
 				timeoutMs: 120000,
-				manualOverride: {
-					clientId: "",
-					apiKey: "",
-					workKbId: "",
-				},
+				manualOverride: { clientId: "", apiKey: "", workKbId: "" },
+				projectKnowledgeBases: {},
 			});
 			const [loading, setLoading] = useState(true);
 			const [saving, setSaving] = useState(false);
 			const [testing, setTesting] = useState(false);
 			const [status, setStatus] = useState(null);
 			const [useManualOverride, setUseManualOverride] = useState(false);
+			const [newProjectName, setNewProjectName] = useState("");
+			const [newProjectKbId, setNewProjectKbId] = useState("");
 
-			// Load config on mount
 			useEffect(() => {
 				(async () => {
 					try {
@@ -238,7 +213,7 @@ window.__ModuleLoader__.load({
 						setConfig(data);
 						setUseManualOverride(!!(data.manualOverride?.clientId || data.manualOverride?.apiKey));
 					} catch (err) {
-						setStatus({ type: "error", message: "加载配置失败: " + err.message });
+						setStatus({ type: "error", message: t("loadError") + err.message });
 					} finally {
 						setLoading(false);
 					}
@@ -265,9 +240,9 @@ window.__ModuleLoader__.load({
 						saveConfig.manualOverride = { clientId: "", apiKey: "", workKbId: "" };
 					}
 					await postJSON(API.save, saveConfig);
-					setStatus({ type: "success", message: "配置已保存" });
+					setStatus({ type: "success", message: t("saveSuccess") });
 				} catch (err) {
-					setStatus({ type: "error", message: "保存失败: " + err.message });
+					setStatus({ type: "error", message: t("saveError") + err.message });
 				} finally {
 					setSaving(false);
 				}
@@ -280,281 +255,181 @@ window.__ModuleLoader__.load({
 					const result = await postJSON(API.test, {});
 					setStatus({ type: result.success ? "success" : "error", message: result.message });
 				} catch (err) {
-					setStatus({ type: "error", message: "测试失败: " + err.message });
+					setStatus({ type: "error", message: t("testError") + err.message });
 				} finally {
 					setTesting(false);
 				}
 			}, []);
 
+			const handleUpdateProjectKb = useCallback((project, kbId) => {
+				setConfig(prev => ({
+					...prev,
+					projectKnowledgeBases: { ...prev.projectKnowledgeBases, [project]: kbId },
+				}));
+			}, []);
+
+			const handleRemoveProjectKb = useCallback((project) => {
+				setConfig(prev => {
+					const next = { ...prev.projectKnowledgeBases };
+					delete next[project];
+					return { ...prev, projectKnowledgeBases: next };
+				});
+			}, []);
+
+			const handleAddProjectKb = useCallback(() => {
+				if (!newProjectName.trim() || !newProjectKbId.trim()) return;
+				setConfig(prev => ({
+					...prev,
+					projectKnowledgeBases: { ...prev.projectKnowledgeBases, [newProjectName.trim()]: newProjectKbId.trim() },
+				}));
+				setNewProjectName("");
+				setNewProjectKbId("");
+			}, [newProjectName, newProjectKbId]);
+
 			if (loading) {
-				return h("div", { className: "ims-panel" },
-					h("div", { style: { textAlign: "center", padding: "40px", color: "var(--dsw-alias-label-secondary)" } }, "加载中...")
-				);
+				return h("div", { style: { padding: "40px", textAlign: "center", color: "var(--dsw-alias-label-secondary)" } }, t("loading"));
 			}
 
-			return h("div", { className: "ims-panel" },
-				h("div", { className: "ims-title" }, "IMA 同步配置"),
-
-				// Status message
+			return h("div", { style: { maxWidth: 760, padding: "0 0 24px" } },
 				status ? h("div", { className: "ims-status ims-status-" + status.type }, status.message) : null,
 
-				// General settings
+				// General
 				h("div", { className: "ims-section" },
-					h("div", { className: "ims-sectionTitle" }, "基本设置"),
+					h("div", { className: "ims-sectionTitle" }, t("general")),
 					h("label", { className: "ims-checkbox" },
-						h("input", {
-							type: "checkbox",
-							checked: config.enabled,
-							onChange: (e) => handleChange("enabled", e.target.checked),
-						}),
-						h("span", { className: "ims-checkboxLabel" }, "启用插件"),
+						h("input", { type: "checkbox", checked: config.enabled, onChange: (e) => handleChange("enabled", e.target.checked) }),
+						h("span", { className: "ims-checkboxLabel" }, t("enable")),
 					),
-					h("div", { className: "ims-hint" }, "禁用后插件完全不注册监听"),
-					h("div", { style: { height: "8px" } }),
+					h("div", { className: "ims-hint" }, t("enableHint")),
+					h("div", { style: { height: 8 } }),
 					h("label", { className: "ims-checkbox" },
-						h("input", {
-							type: "checkbox",
-							checked: config.triggerOnTurnEnd,
-							onChange: (e) => handleChange("triggerOnTurnEnd", e.target.checked),
-						}),
-						h("span", { className: "ims-checkboxLabel" }, "每轮对话结束时上传进度"),
+						h("input", { type: "checkbox", checked: config.triggerOnTurnEnd, onChange: (e) => handleChange("triggerOnTurnEnd", e.target.checked) }),
+						h("span", { className: "ims-checkboxLabel" }, t("triggerTurn")),
 					),
-					h("div", { style: { height: "8px" } }),
+					h("div", { style: { height: 8 } }),
 					h("label", { className: "ims-checkbox" },
-						h("input", {
-							type: "checkbox",
-							checked: config.triggerOnSessionEnd,
-							onChange: (e) => handleChange("triggerOnSessionEnd", e.target.checked),
-						}),
-						h("span", { className: "ims-checkboxLabel" }, "会话销毁时上传总结"),
+						h("input", { type: "checkbox", checked: config.triggerOnSessionEnd, onChange: (e) => handleChange("triggerOnSessionEnd", e.target.checked) }),
+						h("span", { className: "ims-checkboxLabel" }, t("triggerSession")),
 					),
+					h("div", { style: { height: 12 } }),
+					h("div", { className: "ims-label" }, t("mode")),
+					h("label", { className: "ims-checkbox", style: { marginTop: 6 } },
+						h("input", { type: "radio", name: "ima-mode", checked: config.mode === "project+date", onChange: () => handleChange("mode", "project+date") }),
+						h("span", { className: "ims-checkboxLabel" }, t("modeProjectDate")),
+					),
+					h("div", { className: "ims-hint", style: { marginLeft: 24, marginTop: -2 } }, t("modeProjectDateDesc")),
+					h("label", { className: "ims-checkbox", style: { marginTop: 6 } },
+						h("input", { type: "radio", name: "ima-mode", checked: config.mode === "daily", onChange: () => handleChange("mode", "daily") }),
+						h("span", { className: "ims-checkboxLabel" }, t("modeDaily")),
+					),
+					h("div", { className: "ims-hint", style: { marginLeft: 24, marginTop: -2 } }, t("modeDailyDesc")),
 				),
 
-				// Credential settings
+				// Credentials
 				h("div", { className: "ims-section" },
-					h("div", { className: "ims-sectionTitle" }, "IMA 凭证"),
-					h("div", { className: "ims-hint", marginBottom: "12px" }, "从 https://ima.qq.com/agent-interface 获取"),
-
-					// Manual override toggle
-					h("label", { className: "ims-checkbox", marginBottom: "12px" },
-						h("input", {
-							type: "checkbox",
-							checked: useManualOverride,
-							onChange: (e) => setUseManualOverride(e.target.checked),
-						}),
-						h("span", { className: "ims-checkboxLabel" }, "使用手动配置覆盖（优先级最高）"),
+					h("div", { className: "ims-sectionTitle" }, t("credentials")),
+					h("div", { className: "ims-hint", style: { marginBottom: 12 } }, t("credHint")),
+					h("label", { className: "ims-checkbox", style: { marginBottom: 12 } },
+						h("input", { type: "checkbox", checked: useManualOverride, onChange: (e) => setUseManualOverride(e.target.checked) }),
+						h("span", { className: "ims-checkboxLabel" }, t("useManual")),
 					),
-
-					// Direct config fields
 					useManualOverride ? null : h("div", null,
 						h("div", { className: "ims-field" },
-							h("label", { className: "ims-label" }, "Client ID"),
-							h("input", {
-								className: "ims-input",
-								type: "text",
-								placeholder: "留空则读取环境变量或本地文件",
-								value: config.clientId,
-								onChange: (e) => handleChange("clientId", e.target.value),
-							}),
+							h("label", { className: "ims-label" }, t("clientId")),
+							h("input", { className: "ims-input", type: "text", placeholder: t("placeholderCred"), value: config.clientId, onChange: (e) => handleChange("clientId", e.target.value) }),
 						),
 						h("div", { className: "ims-field" },
-							h("label", { className: "ims-label" }, "API Key"),
-							h("input", {
-								className: "ims-input",
-								type: "password",
-								placeholder: "留空则读取环境变量或本地文件",
-								value: config.apiKey,
-								onChange: (e) => handleChange("apiKey", e.target.value),
-							}),
+							h("label", { className: "ims-label" }, t("apiKey")),
+							h("input", { className: "ims-input", type: "password", placeholder: t("placeholderCred"), value: config.apiKey, onChange: (e) => handleChange("apiKey", e.target.value) }),
 						),
 						h("div", { className: "ims-field" },
-							h("label", { className: "ims-label" }, "Work 知识库 ID（可选）"),
-							h("input", {
-								className: "ims-input",
-								type: "text",
-								placeholder: "留空则不关联知识库",
-								value: config.workKbId,
-								onChange: (e) => handleChange("workKbId", e.target.value),
-							}),
+							h("label", { className: "ims-label" }, t("workKbId")),
+							h("input", { className: "ims-input", type: "text", placeholder: t("placeholderKb"), value: config.workKbId, onChange: (e) => handleChange("workKbId", e.target.value) }),
 						),
 					),
-
-					// Manual override fields
 					useManualOverride ? h("div", null,
-						h("div", { className: "ims-hint", marginBottom: "12px" }, "手动配置将覆盖环境变量和本地文件"),
+						h("div", { className: "ims-hint", style: { marginBottom: 12 } }, t("manualHint")),
 						h("div", { className: "ims-field" },
-							h("label", { className: "ims-label" }, "Client ID"),
-							h("input", {
-								className: "ims-input",
-								type: "text",
-								placeholder: "输入 Client ID",
-								value: config.manualOverride.clientId,
-								onChange: (e) => handleManualOverrideChange("clientId", e.target.value),
-							}),
+							h("label", { className: "ims-label" }, t("clientId")),
+							h("input", { className: "ims-input", type: "text", placeholder: t("clientId"), value: config.manualOverride.clientId, onChange: (e) => handleManualOverrideChange("clientId", e.target.value) }),
 						),
 						h("div", { className: "ims-field" },
-							h("label", { className: "ims-label" }, "API Key"),
-							h("input", {
-								className: "ims-input",
-								type: "password",
-								placeholder: "输入 API Key",
-								value: config.manualOverride.apiKey,
-								onChange: (e) => handleManualOverrideChange("apiKey", e.target.value),
-							}),
+							h("label", { className: "ims-label" }, t("apiKey")),
+							h("input", { className: "ims-input", type: "password", placeholder: t("apiKey"), value: config.manualOverride.apiKey, onChange: (e) => handleManualOverrideChange("apiKey", e.target.value) }),
 						),
 						h("div", { className: "ims-field" },
-							h("label", { className: "ims-label" }, "Work 知识库 ID（可选）"),
-							h("input", {
-								className: "ims-input",
-								type: "text",
-								placeholder: "留空则不关联知识库",
-								value: config.manualOverride.workKbId,
-								onChange: (e) => handleManualOverrideChange("workKbId", e.target.value),
-							}),
+							h("label", { className: "ims-label" }, t("workKbId")),
+							h("input", { className: "ims-input", type: "text", placeholder: t("placeholderKb"), value: config.manualOverride.workKbId, onChange: (e) => handleManualOverrideChange("workKbId", e.target.value) }),
 						),
 					) : null,
 				),
 
-				
 				// Project knowledge bases
 				h("div", { className: "ims-section" },
-					h("div", { className: "ims-sectionTitle" }, "项目知识库映射"),
-					h("div", { className: "ims-hint", marginBottom: "12px" }, "为不同项目配置不同的 IMA 知识库 ID"),
-
-					// 现有映射列表
-					Object.entries(config.projectKnowledgeBases).map(([project, kbId]) =>
-						h("div", { key: project, className: "ims-field", style: { display: "flex", gap: "8px", alignItems: "center" } },
-							h("input", {
-								className: "ims-input",
-								type: "text",
-								value: project,
-								disabled: true,
-								style: { flex: 1, maxWidth: "200px" },
-							}),
-							h("input", {
-								className: "ims-input",
-								type: "text",
-								value: kbId,
-								onChange: (e) => handleUpdateProjectKb(project, e.target.value),
-								placeholder: "知识库 ID",
-								style: { flex: 1 },
-							}),
-							h("button", {
-								className: "ims-btn ims-btn-secondary",
-								onClick: () => handleRemoveProjectKb(project),
-								style: { padding: "0 8px", height: "32px" },
-							}, "删除"),
+					h("div", { className: "ims-sectionTitle" }, t("projectKb")),
+					h("div", { className: "ims-hint", style: { marginBottom: 12 } }, t("projectKbHint")),
+					Object.entries(config.projectKnowledgeBases || {}).map(([project, kbId]) =>
+						h("div", { key: project, className: "ims-field", style: { display: "flex", gap: 8, alignItems: "center" } },
+							h("input", { className: "ims-input", type: "text", value: project, disabled: true, style: { flex: 1, maxWidth: 200 } }),
+							h("input", { className: "ims-input", type: "text", value: kbId, onChange: (e) => handleUpdateProjectKb(project, e.target.value), placeholder: t("kbIdPlaceholder"), style: { flex: 1 } }),
+							h("button", { className: "ims-btn ims-btn-secondary", onClick: () => handleRemoveProjectKb(project), style: { padding: "0 8px", height: 32 } }, t("delete")),
 						)
 					),
-
-					// 添加新映射
-					h("div", { className: "ims-field", style: { display: "flex", gap: "8px", alignItems: "center", marginTop: "12px" } },
-						h("input", {
-							className: "ims-input",
-							type: "text",
-							value: newProjectName,
-							onChange: (e) => setNewProjectName(e.target.value),
-							placeholder: "项目名",
-							style: { flex: 1, maxWidth: "200px" },
-						}),
-						h("input", {
-							className: "ims-input",
-							type: "text",
-							value: newProjectKbId,
-							onChange: (e) => setNewProjectKbId(e.target.value),
-							placeholder: "知识库 ID",
-							style: { flex: 1 },
-						}),
-						h("button", {
-							className: "ims-btn ims-btn-primary",
-							onClick: handleAddProjectKb,
-							disabled: !newProjectName.trim() || !newProjectKbId.trim(),
-							style: { padding: "0 12px", height: "32px" },
-						}, "添加"),
+					h("div", { className: "ims-field", style: { display: "flex", gap: 8, alignItems: "center", marginTop: 12 } },
+						h("input", { className: "ims-input", type: "text", value: newProjectName, onChange: (e) => setNewProjectName(e.target.value), placeholder: t("projectName"), style: { flex: 1, maxWidth: 200 } }),
+						h("input", { className: "ims-input", type: "text", value: newProjectKbId, onChange: (e) => setNewProjectKbId(e.target.value), placeholder: t("kbIdPlaceholder"), style: { flex: 1 } }),
+						h("button", { className: "ims-btn ims-btn-primary", onClick: handleAddProjectKb, disabled: !newProjectName.trim() || !newProjectKbId.trim(), style: { padding: "0 12px", height: 32 } }, t("add")),
 					),
 				),
 
-
-				// Advanced settings
+				// Advanced
 				h("div", { className: "ims-section" },
-					h("div", { className: "ims-sectionTitle" }, "高级设置"),
+					h("div", { className: "ims-sectionTitle" }, t("advanced")),
 					h("div", { className: "ims-field" },
-						h("label", { className: "ims-label" }, "ima-upload 脚本路径"),
-						h("input", {
-							className: "ims-input",
-							type: "text",
-							placeholder: "~/.local/bin/ima-upload",
-							value: config.imaUploadBin,
-							onChange: (e) => handleChange("imaUploadBin", e.target.value),
-						}),
-						h("div", { className: "ims-hint" }, "留空使用默认路径；脚本不存在时走直接 API"),
+						h("label", { className: "ims-label" }, t("imaUploadBin")),
+						h("input", { className: "ims-input", type: "text", placeholder: t("placeholderBin"), value: config.imaUploadBin, onChange: (e) => handleChange("imaUploadBin", e.target.value) }),
+						h("div", { className: "ims-hint" }, t("imaUploadBinHint")),
 					),
 					h("div", { className: "ims-field" },
-						h("label", { className: "ims-label" }, "项目映射文件"),
-						h("input", {
-							className: "ims-input",
-							type: "text",
-							placeholder: "~/.config/ima/projects.json",
-							value: config.projectsFile,
-							onChange: (e) => handleChange("projectsFile", e.target.value),
-						}),
+						h("label", { className: "ims-label" }, t("projectsFile")),
+						h("input", { className: "ims-input", type: "text", placeholder: t("placeholderProjects"), value: config.projectsFile, onChange: (e) => handleChange("projectsFile", e.target.value) }),
 					),
 					h("div", { className: "ims-field" },
-						h("label", { className: "ims-label" }, "默认项目名"),
-						h("input", {
-							className: "ims-input",
-							type: "text",
-							placeholder: "留空使用目录名",
-							value: config.defaultProject,
-							onChange: (e) => handleChange("defaultProject", e.target.value),
-						}),
+						h("label", { className: "ims-label" }, t("defaultProject")),
+						h("input", { className: "ims-input", type: "text", placeholder: t("placeholderDefault"), value: config.defaultProject, onChange: (e) => handleChange("defaultProject", e.target.value) }),
+						h("div", { className: "ims-hint" }, t("defaultProjectHint")),
 					),
 				),
 
 				// Buttons
 				h("div", { className: "ims-buttons" },
-					h("button", {
-						className: "ims-btn ims-btn-primary",
-						onClick: handleSave,
-						disabled: saving,
-					}, saving ? "保存中..." : "保存配置"),
-					h("button", {
-						className: "ims-btn ims-btn-secondary",
-						onClick: handleTest,
-						disabled: testing,
-					}, testing ? "测试中..." : "测试连接"),
+					h("button", { className: "ims-btn ims-btn-primary", onClick: handleSave, disabled: saving }, saving ? t("saving") : t("save")),
+					h("button", { className: "ims-btn ims-btn-secondary", onClick: handleTest, disabled: testing }, testing ? t("testing") : t("test")),
 				),
 			);
 		}
 
-		/* ───────────── mount ───────────── */
+		/* ───────────── cordis plugin entry ───────────── */
 
-		injectStyles();
+		const inject = ["slots", "locale"];
 
-		const controller = new PanelController();
-		const cleanupSidebar = mountSidebarEntry(controller);
+		function apply(ctx) {
+			injectStyles();
+			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "ima-sync: dictionaries");
+			const t = ctx.locale.bind(NS);
+			ctx.slots.inject("settings.section", () => ctx.slots.register({
+				name: "settings.section",
+				id: "ima-sync",
+				order: 30,
+				label: () => t("nav"),
+				locale: NS,
+				inject: () => ({}),
+			}, ImaSyncSettings));
+		}
 
-		// Mount the panel view
-		const viewHost = document.createElement("div");
-		viewHost.dataset.dshImasyncView = "";
-		const viewRoot = createRoot(viewHost);
-
-		controller.onOpen = () => {
-			const centerCol = document.querySelector("[data-pane='conversation'], [class*='centerCol']");
-			if (centerCol && !centerCol.contains(viewHost)) {
-				centerCol.appendChild(viewHost);
-			}
-			viewRoot.render(h(ConfigPanel));
-		};
-		controller.onClose = () => {
-			viewRoot.render(null);
-		};
-
-		// Listen for other panels
-		window.addEventListener(ACTIVATE_EVENT, (e) => {
-			if (e.detail !== "imasync") controller.close();
-		});
-
-		module.exports = { controller, cleanupSidebar };
+		exports.NS = NS;
+		exports.apply = apply;
+		exports.inject = inject;
+		return module.exports;
 	},
 });

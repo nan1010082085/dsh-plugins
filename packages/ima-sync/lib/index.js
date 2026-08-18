@@ -30,6 +30,8 @@ const Config = z.object({
   triggerOnTurnEnd: z.boolean().default(true),
   /** 会话销毁（agent/disposed）时上传一条会话总结。 */
   triggerOnSessionEnd: z.boolean().default(true),
+  /** 笔记模式：project+date 按项目+日期分笔记，daily 按日期合并所有项目。 */
+  mode: z.union([z.const("project+date"), z.const("daily")]).default("project+date"),
   /** IMA OpenAPI Client ID。留空依次回退：环境变量 -> ~/.config/ima/client_id。 */
   clientId: z.string().default(""),
   /** IMA OpenAPI API Key。留空依次回退：环境变量 -> ~/.config/ima/api_key。 */
@@ -43,7 +45,7 @@ const Config = z.object({
   /** IMA Work 知识库 ID（全局默认）。留空则只创建/追加笔记，不关联知识库。 */
   workKbId: z.string().default(""),
   /** 项目级别的知识库映射。key 为项目名，value 为知识库 ID。 */
-  projectKnowledgeBases: z.record(z.string()).default({}),
+  projectKnowledgeBases: z.dict(z.string()).default({}),
   /** 本机 ima-upload 脚本路径。留空默认 ~/.local/bin/ima-upload；脚本不存在时走直接 API。 */
   imaUploadBin: z.string().default(""),
   /** 项目名映射文件（cwd -> 项目名）。留空默认 ~/.config/ima/projects.json。 */
@@ -84,6 +86,7 @@ function resolveConfig(config) {
     enabled: base.enabled ?? true,
     triggerOnTurnEnd: base.triggerOnTurnEnd ?? true,
     triggerOnSessionEnd: base.triggerOnSessionEnd ?? true,
+    mode: base.mode || "project+date",
     clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
     apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
     workKbId: manualOverride.workKbId || base.workKbId || "",
@@ -244,9 +247,11 @@ async function findTodayNote(prefix, todayStartMs, creds) {
 }
 
 /** 直接 API 上传：找/建每日笔记 -> 追加或创建 -> 关联 Work 知识库。 */
-async function uploadDirect({ creds, project, task, summary, detail, cacheDir, workKbId, date }) {
-  const dailyTitle = `[${project}] ${date}`;
-  const cacheKey = createHash("md5").update(`${project}_${date}\n`).digest("hex");
+async function uploadDirect({ creds, project, task, summary, detail, cacheDir, workKbId, projectKnowledgeBases, date, mode }) {
+  const isDaily = mode === "daily";
+  const dailyTitle = isDaily ? date : `[${project}] ${date}`;
+  const searchPrefix = isDaily ? date : `[${project}]`;
+  const cacheKey = createHash("md5").update(isDaily ? `daily_${date}\n` : `${project}_${date}\n`).digest("hex");
   const cacheFile = path.join(cacheDir, cacheKey);
   let noteId = "";
   let fromCache = false;
@@ -256,7 +261,7 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
   }
   if (!noteId) {
     const todayStartMs = new Date(`${date}T00:00:00`).getTime();
-    noteId = await findTodayNote(`[${project}]`, todayStartMs, creds);
+    noteId = await findTodayNote(searchPrefix, todayStartMs, creds);
     if (noteId) {
       try {
         mkdirSync(cacheDir, { recursive: true });
@@ -267,7 +272,9 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
     }
   }
 
-  const appendContent = `\n\n### ${task}\n\n${summary}\n\n${detail}`;
+  const appendContent = isDaily
+    ? `\n\n### [${project}] ${task}\n\n${summary}\n\n${detail}`
+    : `\n\n### ${task}\n\n${summary}\n\n${detail}`;
 
   if (noteId) {
     try {
@@ -285,7 +292,9 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
     }
   }
 
-  const fullContent = `# ${dailyTitle}\n\n- **项目**：${project}\n- **日期**：${date}\n\n---\n\n### ${task}\n\n${summary}\n\n${detail}`;
+  const fullContent = isDaily
+    ? `# ${dailyTitle}\n\n- **日期**：${date}\n\n---\n\n### [${project}] ${task}\n\n${summary}\n\n${detail}`
+    : `# ${dailyTitle}\n\n- **项目**：${project}\n- **日期**：${date}\n\n---\n\n### ${task}\n\n${summary}\n\n${detail}`;
   const created = await callIma("openapi/note/v1/import_doc", { content_format: 1, content: fullContent }, creds);
   const newId = created.data?.note_id ?? "";
   if (!newId) throw new Error("IMA import_doc 未返回 note_id");
@@ -295,8 +304,8 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
   } catch {
     /* ignore */
   }
-  // 使用项目级别的知识库 ID
-  const projectWorkKbId = getWorkKbIdForProject(project, cfg);
+  // 使用项目级别的知识库 ID（daily 模式用全局 workKbId）
+  const projectWorkKbId = isDaily ? workKbId : getWorkKbIdForProject(project, { projectKnowledgeBases, workKbId });
   if (projectWorkKbId) {
     try {
       await callIma("openapi/wiki/v1/add_knowledge", {
@@ -452,12 +461,17 @@ async function readBody(req) {
 
 function apply(ctx, config) {
   const cfg = resolveConfig(config);
-  if (!cfg.enabled) return;
+  if (!cfg.enabled) {
+    ctx.logger.info("[ima-sync] 插件已禁用（enabled=false）");
+    return;
+  }
 
   if (!cfg.clientId || !cfg.apiKey) {
     ctx.logger.warn("[ima-sync] 未找到 IMA 凭证（clientId/apiKey），插件已禁用。可配置 clientId/apiKey，或写入 ~/.config/ima/client_id 与 ~/.config/ima/api_key。");
     return;
   }
+
+  ctx.logger.info(`[ima-sync] 初始化 | mode=${cfg.mode} | triggerOnTurnEnd=${cfg.triggerOnTurnEnd} | triggerOnSessionEnd=${cfg.triggerOnSessionEnd} | workKbId=${cfg.workKbId ? "***" : "未设置"}`);
 
   const log = (message) => ctx.logger.info(`[ima-sync] ${message}`);
   const warn = (message) => ctx.logger.warn(`[ima-sync] ${message}`);
@@ -494,7 +508,9 @@ function apply(ctx, config) {
         detail: record.detail,
         cacheDir: cfg.cacheDir,
         workKbId: cfg.workKbId,
+        projectKnowledgeBases: cfg.projectKnowledgeBases,
         date,
+        mode: cfg.mode,
       });
       log(`已上传（API）→ ${project}：${oneLine(record.task)} note_id=${res.noteId}`);
       return res;
@@ -588,93 +604,90 @@ function apply(ctx, config) {
       },
     });
   });
-}
 
-
-/* ───────────────────────── Web API 路由注册 ───────────────────────── */
-
-// Web API 路由
-const routes = [
-  {
-    method: "GET",
-    path: "/api/dsh-ima-sync/config",
-    handler: (req, res) => {
-      if (!isLoopbackRequest(req)) {
-        writeJson(res, 403, { error: "loopback only" });
-        return;
-      }
-      // 返回当前配置（隐藏敏感信息）
-      const safeConfig = {
-        enabled: cfg.enabled,
-        triggerOnTurnEnd: cfg.triggerOnTurnEnd,
-        triggerOnSessionEnd: cfg.triggerOnSessionEnd,
-        clientId: cfg.clientId ? "***" : "",
-        apiKey: cfg.apiKey ? "***" : "",
-        workKbId: cfg.workKbId,
-        imaUploadBin: cfg.imaUploadBin,
-        projectsFile: cfg.projectsFile,
-        cacheDir: cfg.cacheDir,
-        defaultProject: cfg.defaultProject,
-        maxPromptLength: cfg.maxPromptLength,
-        maxDetailLength: cfg.maxDetailLength,
-        timeoutMs: cfg.timeoutMs,
-        manualOverride: {
-          clientId: config?.manualOverride?.clientId ? "***" : "",
-          apiKey: config?.manualOverride?.apiKey ? "***" : "",
-          workKbId: config?.manualOverride?.workKbId || "",
-        },
-      };
-      writeJson(res, 200, safeConfig);
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/dsh-ima-sync/config",
-    handler: async (req, res) => {
-      if (!isLoopbackRequest(req)) {
-        writeJson(res, 403, { error: "loopback only" });
-        return;
-      }
-      try {
-        const newConfig = await readBody(req);
-        // 更新配置（这里只是示例，实际需要持久化到配置文件）
-        log("收到配置更新请求");
-        writeJson(res, 200, { success: true, message: "配置已更新（需要重启 DSH 生效）" });
-      } catch (err) {
-        writeJson(res, 500, { error: err.message });
-      }
-    },
-  },
-  {
-    method: "POST",
-    path: "/api/dsh-ima-sync/test",
-    handler: async (req, res) => {
-      if (!isLoopbackRequest(req)) {
-        writeJson(res, 403, { error: "loopback only" });
-        return;
-      }
-      try {
-        if (!cfg.clientId || !cfg.apiKey) {
-          writeJson(res, 200, { success: false, message: "未配置 IMA 凭证" });
+  // 注册 Web API 路由
+  const routes = [
+    {
+      name: "ima-sync:config",
+      path: "/api/dsh-ima-sync/config",
+      handler: async (req, res) => {
+        if (!isLoopbackRequest(req)) {
+          writeJson(res, 403, { error: "loopback only" });
           return;
         }
-        // 测试连接：尝试列出笔记
-        const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
-        await callIma("openapi/note/v1/list_note", { cursor: "", limit: 1 }, creds);
-        writeJson(res, 200, { success: true, message: "连接成功" });
-      } catch (err) {
-        writeJson(res, 200, { success: false, message: "连接失败: " + err.message });
-      }
+        if (req.method === "GET") {
+          const safeConfig = {
+            enabled: cfg.enabled,
+            triggerOnTurnEnd: cfg.triggerOnTurnEnd,
+            triggerOnSessionEnd: cfg.triggerOnSessionEnd,
+            mode: cfg.mode,
+            clientId: cfg.clientId ? "***" : "",
+            apiKey: cfg.apiKey ? "***" : "",
+            workKbId: cfg.workKbId,
+            imaUploadBin: cfg.imaUploadBin,
+            projectsFile: cfg.projectsFile,
+            cacheDir: cfg.cacheDir,
+            defaultProject: cfg.defaultProject,
+            maxPromptLength: cfg.maxPromptLength,
+            maxDetailLength: cfg.maxDetailLength,
+            timeoutMs: cfg.timeoutMs,
+            manualOverride: {
+              clientId: config?.manualOverride?.clientId ? "***" : "",
+              apiKey: config?.manualOverride?.apiKey ? "***" : "",
+              workKbId: config?.manualOverride?.workKbId || "",
+            },
+          };
+          writeJson(res, 200, safeConfig);
+          return;
+        }
+        if (req.method === "POST") {
+          try {
+            const newConfig = await readBody(req);
+            log("收到配置更新请求");
+            writeJson(res, 200, { success: true, message: "配置已更新（需要重启 DSH 生效）" });
+          } catch (err) {
+            writeJson(res, 500, { error: err.message });
+          }
+          return;
+        }
+        writeJson(res, 405, { error: "Method Not Allowed" });
+      },
     },
-  },
-];
+    {
+      name: "ima-sync:test",
+      method: "POST",
+      path: "/api/dsh-ima-sync/test",
+      handler: async (req, res) => {
+        if (!isLoopbackRequest(req)) {
+          writeJson(res, 403, { error: "loopback only" });
+          return;
+        }
+        try {
+          if (!cfg.clientId || !cfg.apiKey) {
+            writeJson(res, 200, { success: false, message: "未配置 IMA 凭证" });
+            return;
+          }
+          // 测试连接：尝试列出笔记
+          const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
+          await callIma("openapi/note/v1/list_note", { cursor: "", limit: 1 }, creds);
+          writeJson(res, 200, { success: true, message: "连接成功" });
+        } catch (err) {
+          writeJson(res, 200, { success: false, message: "连接失败: " + err.message });
+        }
+      },
+    },
+  ];
 
-// 注册路由
-ctx.effect(() => {
-  const disposers = routes.map((route) => ctx.webServer.register(route));
-  return () => {
-    for (const dispose of disposers) dispose();
-  };
-}, "ima-sync: web routes");
+  // 注册 Web API 路由
+  const registered = new Set();
+  const disposers = routes
+    .filter((route) => {
+      const key = `${route.method}:${route.path}`;
+      if (registered.has(key)) return false;
+      registered.add(key);
+      return true;
+    })
+    .map((route) => ctx.webServer.register(route));
+}
 
 export { Config, apply, inject, name };

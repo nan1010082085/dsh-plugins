@@ -6,8 +6,9 @@ DSH(DeepSeek Harness)插件 monorepo。每个包是一个独立可安装的 dsh 
 
 | 包 | 说明 | 状态 |
 | --- | --- | --- |
-| [`packages/chat-sync`](./packages/chat-sync) | **对话同步**:把本地 Claude Code / Codex CLI / Cursor Agent 的对话同步进 DSH Web GUI,SSE 动态更新 + 来源徽标 | v0.1.0 |
-| [`packages/ima-sync`](./packages/ima-sync) | **IMA 上传**:把 DSH 对话进度自动上传到腾讯 IMA(每日笔记 + Work 知识库) | 0.1.0 |
+| [`packages/chat-sync`](./packages/chat-sync) | **对话同步**:把本地 Claude Code / Codex CLI / Cursor Agent 的对话同步进 DSH Web GUI,侧边栏标签页 + 来源分组 + SSE 动态更新 | v0.1.0 |
+| [`packages/ima-sync`](./packages/ima-sync) | **IMA 上传**:把 DSH 对话进度自动上传到腾讯 IMA(每日笔记 + Work 知识库) | 0.3.1 |
+| [`packages/mcp-sync`](./packages/mcp-sync) | **MCP 同步**:自动同步本地 Claude Code / Codex CLI / Cursor Agent 的 MCP 配置,去重过滤 + 集中管理 | 0.1.0 |
 
 ## 安装(任一包)
 
@@ -15,19 +16,25 @@ DSH(DeepSeek Harness)插件 monorepo。每个包是一个独立可安装的 dsh 
 # 本地 link 安装(改源码重启 dsh web 即生效)
 dsh plugin --profile web add link:$(pwd)/packages/chat-sync
 dsh plugin --profile web add link:$(pwd)/packages/ima-sync
+dsh plugin --profile web add link:$(pwd)/packages/mcp-sync
 
 # 或从 GitHub 单包安装
 dsh plugin --profile web add github:nan1010082085/dsh-chat-sync
 dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
+dsh plugin --profile web add github:nan1010082085/dsh-mcp-sync
 ```
 
 ## 开发
 
 ```sh
-# 语法 + 测试(chat-sync)
+# 语法检查(chat-sync)
 node --check packages/chat-sync/lib/*.js
-node packages/chat-sync/tests/smoke.mjs
-node packages/chat-sync/tests/client-load.mjs
+
+# 语法检查(mcp-sync)
+node --check packages/mcp-sync/lib/*.js
+
+# 语法检查(ima-sync)
+node --check packages/ima-sync/lib/*.js
 ```
 
 ## 仓库迁移说明

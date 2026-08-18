@@ -2,10 +2,9 @@
  * dsh-chat-sync - browser half (hand-written, zero-build).
  *
  * Loaded by the dsh web shell at /plugins/dsh-chat-sync/client.js and
- * materialized through window.__ModuleLoader__. Mounts two DOM surfaces
- * following the dsh-ssh/task-board precedent: a sidebar entry row and a
- * center-column panel (React root) that lists local Claude Code / Codex CLI /
- * Cursor Agent conversations and live-syncs them over SSE.
+ * materialized through window.__ModuleLoader__. Registers a tab in
+ * dsh-better-sidebar showing local Claude Code / Codex CLI / Cursor Agent
+ * conversations organized by source, with live-sync over SSE.
  */
 window.__ModuleLoader__.load({
 	id: "dsh-chat-sync",
@@ -14,7 +13,6 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 
 		const React = require("react");
-		const { createRoot } = require("react-dom/client");
 		const { useState, useEffect, useRef, useMemo, useCallback } = React;
 		const h = React.createElement;
 
@@ -28,10 +26,12 @@ window.__ModuleLoader__.load({
 		};
 
 		const SOURCE_META = {
-			claude: { label: "Claude", color: "#d97757" },
-			codex: { label: "Codex", color: "#10a37f" },
-			cursor: { label: "Cursor", color: "#3ea8ff" },
+			claude: { label: "Claude Code", color: "#d97757", icon: "C" },
+			codex: { label: "Codex CLI", color: "#10a37f", icon: "X" },
+			cursor: { label: "Cursor Agent", color: "#3ea8ff", icon: "U" },
 		};
+
+		const SOURCES = ["claude", "codex", "cursor"];
 
 		async function getJSON(url) {
 			const res = await fetch(url, { headers: { accept: "application/json" } });
@@ -63,121 +63,62 @@ window.__ModuleLoader__.load({
 			return t.length > n ? t.slice(0, n - 1) + "…" : t;
 		}
 
-		/* ───────────── panel controller ───────────── */
-
-		const OTHER_PANEL_ATTRS = ["data-dsh-taskboard-active", "data-dsh-ssh-active"];
-		const ACTIVATE_EVENT = "dsh-panel-activate";
-
-		class PanelController {
-			constructor() {
-				this.panelOpen = false;
-				this.listeners = new Set();
-				this.onOpen = () => {};
-				this.onClose = () => {};
-			}
-			getSnapshot() {
-				return { panelOpen: this.panelOpen };
-			}
-			subscribe(fn) {
-				this.listeners.add(fn);
-				return () => this.listeners.delete(fn);
-			}
-			open() {
-				if (this.panelOpen) return;
-				this.panelOpen = true;
-				const root = document.documentElement;
-				root.setAttribute("data-dsh-chatsync-active", "");
-				for (const attr of OTHER_PANEL_ATTRS) root.removeAttribute(attr);
-				window.dispatchEvent(new CustomEvent(ACTIVATE_EVENT, { detail: "chatsync" }));
-				this.onOpen();
-				this.notify();
-			}
-			close() {
-				if (!this.panelOpen) return;
-				this.panelOpen = false;
-				document.documentElement.removeAttribute("data-dsh-chatsync-active");
-				this.onClose();
-				this.notify();
-			}
-			toggle() {
-				if (this.panelOpen) this.close();
-				else this.open();
-			}
-			notify() {
-				for (const fn of [...this.listeners]) fn();
-			}
-		}
-
 		/* ───────────── styles ───────────── */
 
 		const CSS = [
-			/* center-column takeover (attribute-scoped global rules) */
-			"[data-pane='conversation'], [class*='centerCol'] { position: relative; }",
-			"[data-dsh-chatsync-view] { position: absolute; inset: 0; display: none; z-index: 60; background: var(--dsw-alias-bg-base); }",
-			"html[data-dsh-chatsync-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-dsh-chatsync-view] { display: block; }",
-			"html[data-dsh-chatsync-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [data-pane='conversation'] > :not([data-dsh-chatsync-view]),",
-			"html[data-dsh-chatsync-active]:not([data-dsh-taskboard-active]):not([data-dsh-ssh-active]) [class*='centerCol'] > :not([data-dsh-chatsync-view]) { display: none !important; }",
+			/* tree container */
+			".dcs-tree { display: flex; flex-direction: column; height: 100%; font-family: var(--dsw-font-family); }",
+			".dcs-toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border, rgba(127,127,127,.15)); flex: none; }",
+			".dcs-search { flex: 1; height: 26px; border-radius: 6px; border: 1px solid var(--dsw-alias-border, rgba(127,127,127,.2)); background: var(--dsw-alias-bg-elevated, rgba(127,127,127,.06)); color: var(--dsw-alias-label-primary); padding: 0 8px; font-size: 12px; outline: none; }",
+			".dcs-search:focus { border-color: rgba(127,127,127,.4); }",
+			".dcs-liveBtn { display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; font-size: 11px; padding: 2px 6px; border-radius: 4px; }",
+			".dcs-liveBtn:hover { background: rgba(127,127,127,.1); }",
+			".dcs-liveBtn[data-on='1'] { color: #34c759; }",
+			".dcs-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }",
 
-			/* sidebar entry */
-			".dcs-entry { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 12px; background: transparent; border: none; border-radius: 8px; color: var(--dsw-alias-label-secondary); cursor: pointer; font-size: 13px; white-space: nowrap; }",
-			".dcs-entry:hover { background: var(--dsw-specific-sidebar-nav-item-hover, rgba(127,127,127,.12)); color: var(--dsw-alias-label-primary); }",
-			".dcs-entry[data-active] { background: var(--dsw-specific-sidebar-nav-item-active, rgba(127,127,127,.16)); color: var(--dsw-alias-label-primary); font-weight: 600; }",
-			".dcs-entryIcon { display: inline-flex; align-items: center; justify-content: center; flex: none; }",
-			".dcs-entryLabel { overflow: hidden; text-overflow: ellipsis; }",
-			"[data-dsh-frame][data-sidebar-collapsed] .dcs-entry { justify-content: center; padding: 0; }",
-			"[data-dsh-frame][data-sidebar-collapsed] .dcs-entryLabel { display: none; }",
+			/* source groups */
+			".dcs-scroll { flex: 1; overflow-y: auto; padding: 4px 0; }",
+			".dcs-sourceGroup { margin-bottom: 2px; }",
+			".dcs-sourceHead { display: flex; align-items: center; gap: 6px; padding: 6px 10px; cursor: pointer; user-select: none; }",
+			".dcs-sourceHead:hover { background: rgba(127,127,127,.06); }",
+			".dcs-sourceArrow { width: 14px; height: 14px; color: var(--dsw-alias-label-secondary); transition: transform .15s; flex: none; }",
+			".dcs-sourceArrow[data-open='1'] { transform: rotate(90deg); }",
+			".dcs-sourceBadge { font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px; color: #fff; flex: none; }",
+			".dcs-sourceLabel { font-size: 12px; font-weight: 600; color: var(--dsw-alias-label-primary); flex: 1; }",
+			".dcs-sourceCount { font-size: 10px; color: var(--dsw-alias-label-secondary); flex: none; }",
 
-			/* panel frame */
-			".dcs-panel { display: flex; flex-direction: column; height: 100%; min-width: 0; min-height: 0; background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }",
-			".dcs-header { display: flex; align-items: center; gap: 10px; padding: 12px 16px 10px; border-bottom: 1px solid var(--dsw-alias-border, rgba(127,127,127,.2)); flex: none; flex-wrap: wrap; }",
-			".dcs-title { font-size: 15px; font-weight: 700; margin-right: 4px; }",
-			".dcs-chips { display: flex; gap: 4px; }",
-			".dcs-chip { border: 1px solid transparent; background: transparent; color: var(--dsw-alias-label-secondary); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }",
-			".dcs-chip:hover { background: rgba(127,127,127,.12); }",
-			".dcs-chip[data-on='1'] { background: rgba(127,127,127,.18); color: var(--dsw-alias-label-primary); font-weight: 600; }",
-			".dcs-search { flex: 1; min-width: 140px; max-width: 320px; height: 28px; border-radius: 8px; border: 1px solid var(--dsw-alias-border, rgba(127,127,127,.25)); background: var(--dsw-alias-bg-elevated, rgba(127,127,127,.06)); color: var(--dsw-alias-label-primary); padding: 0 10px; font-size: 12px; outline: none; }",
-			".dcs-search:focus { border-color: rgba(127,127,127,.45); }",
-			".dcs-liveChip { display: inline-flex; align-items: center; gap: 5px; }",
-			".dcs-dot { width: 7px; height: 7px; border-radius: 50%; background: #34c759; display: inline-block; }",
-			".dcs-dot[data-off='1'] { background: rgba(127,127,127,.45); }",
-			".dcs-body { flex: 1; display: flex; min-height: 0; }",
-			".dcs-close { border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 6px; }",
-			".dcs-close:hover { background: rgba(127,127,127,.12); color: var(--dsw-alias-label-primary); }",
+			/* session rows */
+			".dcs-sessionList { padding-left: 14px; }",
+			".dcs-row { display: block; width: 100%; text-align: left; border: none; background: transparent; border-radius: 6px; padding: 6px 10px; cursor: pointer; color: inherit; margin: 1px 0; }",
+			".dcs-row:hover { background: rgba(127,127,127,.08); }",
+			".dcs-row[data-selected='1'] { background: rgba(62,132,255,.12); }",
+			".dcs-rowTitle { font-size: 12px; color: var(--dsw-alias-label-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 4px; }",
+			".dcs-rowLive { width: 5px; height: 5px; border-radius: 50%; background: #34c759; flex: none; animation: dcsPulse 1.6s infinite; }",
+			"@keyframes dcsPulse { 0%,100% { opacity: 1 } 50% { opacity: .3 } }",
+			".dcs-rowMeta { font-size: 10px; color: var(--dsw-alias-label-secondary); margin-top: 2px; display: flex; gap: 6px; }",
+			".dcs-rowProject { overflow: hidden; text-overflow: ellipsis; max-width: 60%; }",
 
-			/* session list */
-			".dcs-list { width: 300px; flex: none; overflow-y: auto; border-right: 1px solid var(--dsw-alias-border, rgba(127,127,127,.2)); padding: 6px; }",
-			".dcs-row { display: block; width: 100%; text-align: left; border: none; background: transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; color: inherit; }",
-			".dcs-row:hover { background: rgba(127,127,127,.1); }",
-			".dcs-row[data-on='1'] { background: rgba(127,127,127,.16); }",
-			".dcs-rowTop { display: flex; align-items: center; gap: 6px; }",
-			".dcs-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; color: #fff; flex: none; letter-spacing: .3px; }",
-			".dcs-rowTitle { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
-			".dcs-liveDot { width: 6px; height: 6px; border-radius: 50%; background: #34c759; flex: none; animation: dcsPulse 1.6s infinite; }",
-			"@keyframes dcsPulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }",
-			".dcs-rowSub { display: flex; gap: 8px; margin-top: 3px; font-size: 11px; color: var(--dsw-alias-label-secondary); overflow: hidden; white-space: nowrap; }",
-			".dcs-rowProject { overflow: hidden; text-overflow: ellipsis; max-width: 55%; }",
-			".dcs-rowTime { flex: none; }",
-			".dcs-listStatus { padding: 18px 12px; text-align: center; color: var(--dsw-alias-label-secondary); font-size: 12px; }",
-
-			/* detail */
-			".dcs-detail { flex: 1; min-width: 0; display: flex; flex-direction: column; }",
-			".dcs-detailHead { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--dsw-alias-border, rgba(127,127,127,.2)); }",
-			".dcs-detailTitle { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
-			".dcs-detailMeta { font-size: 11px; color: var(--dsw-alias-label-secondary); flex: none; }",
-			".dcs-msgs { flex: 1; overflow-y: auto; padding: 14px 16px 24px; }",
-			".dcs-msg { margin-bottom: 10px; max-width: 92%; }",
+			/* detail panel */
+			".dcs-detail { display: flex; flex-direction: column; height: 100%; }",
+			".dcs-detailHead { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border, rgba(127,127,127,.15)); flex: none; }",
+			".dcs-detailBack { border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 2px; border-radius: 4px; }",
+			".dcs-detailBack:hover { background: rgba(127,127,127,.1); }",
+			".dcs-detailTitle { font-size: 12px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }",
+			".dcs-detailMeta { font-size: 10px; color: var(--dsw-alias-label-secondary); flex: none; }",
+			".dcs-msgs { flex: 1; overflow-y: auto; padding: 10px; }",
+			".dcs-msg { margin-bottom: 8px; max-width: 95%; }",
 			".dcs-msg[data-role='user'] { margin-left: auto; }",
-			".dcs-bubble { border-radius: 10px; padding: 8px 12px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }",
-			".dcs-msg[data-role='user'] .dcs-bubble { background: rgba(62,132,255,.16); border: 1px solid rgba(62,132,255,.25); }",
-			".dcs-msg[data-role='assistant'] .dcs-bubble { background: var(--dsw-alias-bg-elevated, rgba(127,127,127,.08)); border: 1px solid var(--dsw-alias-border, rgba(127,127,127,.18)); }",
-			".dcs-msg[data-role='system'] .dcs-bubble, .dcs-msg[data-role='tool'] .dcs-bubble { background: transparent; border: 1px dashed rgba(127,127,127,.3); color: var(--dsw-alias-label-secondary); font-size: 12px; }",
-			".dcs-msgTag { font-size: 10px; color: var(--dsw-alias-label-secondary); margin-bottom: 2px; display: flex; gap: 6px; align-items: center; }",
-			".dcs-tools { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }",
-			".dcs-tool { font-size: 11px; background: rgba(127,127,127,.12); border: 1px solid rgba(127,127,127,.2); border-radius: 6px; padding: 2px 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-secondary); }",
-			".dcs-toolInput { color: var(--dsw-alias-label-secondary); opacity: .8; }",
-			".dcs-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--dsw-alias-label-secondary); font-size: 13px; }",
-			".dcs-loading { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(127,127,127,.3); border-top-color: var(--dsw-alias-label-primary); border-radius: 50%; animation: dcsSpin .8s linear infinite; }",
+			".dcs-bubble { border-radius: 8px; padding: 6px 10px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }",
+			".dcs-msg[data-role='user'] .dcs-bubble { background: rgba(62,132,255,.12); border: 1px solid rgba(62,132,255,.2); }",
+			".dcs-msg[data-role='assistant'] .dcs-bubble { background: var(--dsw-alias-bg-elevated, rgba(127,127,127,.06)); border: 1px solid var(--dsw-alias-border, rgba(127,127,127,.15)); }",
+			".dcs-msg[data-role='system'] .dcs-bubble, .dcs-msg[data-role='tool'] .dcs-bubble { background: transparent; border: 1px dashed rgba(127,127,127,.2); color: var(--dsw-alias-label-secondary); font-size: 11px; }",
+			".dcs-msgTag { font-size: 10px; color: var(--dsw-alias-label-secondary); margin-bottom: 2px; }",
+			".dcs-tools { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }",
+			".dcs-tool { font-size: 10px; background: rgba(127,127,127,.1); border: 1px solid rgba(127,127,127,.15); border-radius: 4px; padding: 1px 6px; color: var(--dsw-alias-label-secondary); }",
+			".dcs-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--dsw-alias-label-secondary); font-size: 12px; }",
+			".dcs-loading { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(127,127,127,.2); border-top-color: var(--dsw-alias-label-primary); border-radius: 50%; animation: dcsSpin .8s linear infinite; }",
 			"@keyframes dcsSpin { to { transform: rotate(360deg) } }",
+			".dcs-status { padding: 8px 10px; text-align: center; color: var(--dsw-alias-label-secondary); font-size: 11px; }",
 		].join("\n");
 
 		function injectStyles() {
@@ -188,69 +129,7 @@ window.__ModuleLoader__.load({
 			document.head.appendChild(el);
 		}
 
-		/* ───────────── sidebar entry (self-healing DOM row) ───────────── */
-
-		const ENTRY_ICON = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3.5h11v9h-11z"/><path d="M2.5 6h11"/><path d="M4.5 8.5h4"/><path d="M4.5 10.5h2.5"/></svg>';
-
-		function sidebarRoot() {
-			const column = document.querySelector('[data-pane="sidebar"], [class*="sidebarCol"]');
-			if (!column) return undefined;
-			const logoOwner = column.querySelector('[class*="logoRow"]')?.parentElement;
-			return logoOwner ?? column.firstElementChild ?? undefined;
-		}
-
-		function mountSidebarEntry(controller) {
-			if (document.querySelector("[data-dsh-chatsync-entry]") !== null) return () => {};
-			const entry = document.createElement("button");
-			entry.type = "button";
-			entry.dataset.dshChatsyncEntry = "";
-			entry.className = "dcs-entry";
-			entry.setAttribute("aria-label", "对话同步");
-			entry.title = "同步本地 Claude / Codex / Cursor 对话";
-			entry.innerHTML = '<span class="dcs-entryIcon">' + ENTRY_ICON + '</span><span class="dcs-entryLabel">对话同步</span>';
-			entry.addEventListener("click", () => controller.toggle());
-
-			let rootObserver;
-			let placed = false;
-			const syncActive = () => {
-				entry.setAttribute("data-active", controller.panelOpen ? "1" : "0");
-			};
-			controller.subscribe(syncActive);
-
-			const tryPlace = () => {
-				if (placed && !document.body.contains(entry)) {
-					if (rootObserver) rootObserver.disconnect();
-					placed = false;
-				}
-				if (placed) return;
-				const root = sidebarRoot();
-				if (!root) return;
-				if (entry.isConnected) { placed = true; return; }
-				let anchor = root.querySelector('button[class*="newSession"]');
-				if (!anchor) {
-					for (const child of root.children) if (child.tagName === "BUTTON") { anchor = child; break; }
-				}
-				const row = anchor ? anchor.closest('[class*="logoRow"]') : null;
-				const base = row && row.parentElement === root ? row : anchor;
-				const ref = base ? base.nextElementSibling : null;
-				if (ref) root.insertBefore(entry, ref);
-				else root.appendChild(entry);
-				placed = true;
-				rootObserver = new MutationObserver(tryPlace);
-				rootObserver.observe(root, { childList: true, subtree: true });
-			};
-
-			const waitObserver = new MutationObserver(tryPlace);
-			waitObserver.observe(document.body, { childList: true, subtree: true });
-			tryPlace();
-			return () => {
-				waitObserver.disconnect();
-				if (rootObserver) rootObserver.disconnect();
-				entry.remove();
-			};
-		}
-
-		/* ───────────── React: message view ───────────── */
+		/* ───────────── session detail view ───────────── */
 
 		function MessageView({ m }) {
 			const tag = m.role === "assistant" ? (m.model ? "assistant · " + m.model : "assistant")
@@ -261,134 +140,121 @@ window.__ModuleLoader__.load({
 				h("div", { className: "dcs-msgTag" }, tag),
 				m.text ? h("div", { className: "dcs-bubble" }, m.text) : null,
 				m.toolUses && m.toolUses.length ? h("div", { className: "dcs-tools" },
-					m.toolUses.map((t, i) => h("span", { className: "dcs-tool", key: i, title: oneLine(t.input, 300) }, "🔧 " + t.name)),
+					m.toolUses.map((t, i) => h("span", { className: "dcs-tool", key: i, title: oneLine(t.input, 200) }, "🔧 " + t.name)),
 				) : null,
 			);
 		}
 
-		/* ───────────── React: detail pane ───────────── */
-
-		function DetailPane({ session, liveTick }) {
+		function SessionDetail({ session, onBack }) {
 			const [data, setData] = useState(null);
 			const [error, setError] = useState("");
 			const [loading, setLoading] = useState(true);
-			const [follow, setFollow] = useState(true);
 			const scroller = useRef(null);
-			const nextRef = useRef(0);
-			const idRef = useRef(session.id);
-			const [tick, setTick] = useState(0);
-
-			// Reset when a different session is opened.
-			useEffect(() => {
-				if (idRef.current !== session.id) {
-					idRef.current = session.id;
-					nextRef.current = 0;
-					setData(null);
-					setError("");
-					setLoading(true);
-					setTick((t) => t + 1);
-				}
-			}, [session.id]);
-
-			// Live updates: parent bumps liveTick when SSE names this session.
-			useEffect(() => {
-				if (!liveTick) return;
-				setTick((t) => t + 1);
-			}, [liveTick]);
-
-			const load = useCallback(async (from) => {
-				try {
-					const res = await getJSON(API.session({ id: session.id, from: String(from) }));
-					setError("");
-					setData((prev) => {
-						if (!prev || res.reset || from === 0) return res;
-						return { ...res, messages: prev.messages.concat(res.messages) };
-					});
-					nextRef.current = res.next;
-				} catch (e) {
-					setError(String(e.message || e));
-				} finally {
-					setLoading(false);
-				}
-			}, [session.id]);
 
 			useEffect(() => {
+				let cancelled = false;
 				setLoading(true);
-				void load(0);
-			}, [tick, load]);
+				setError("");
+				getJSON(API.session({ id: session.id, from: "0" }))
+					.then((res) => { if (!cancelled) setData(res); })
+					.catch((e) => { if (!cancelled) setError(String(e.message || e)); })
+					.finally(() => { if (!cancelled) setLoading(false); });
+				return () => { cancelled = true; };
+			}, [session.id]);
 
-			// Auto-scroll when following.
 			useEffect(() => {
 				const el = scroller.current;
-				if (!el || !follow || !data) return;
-				el.scrollTop = el.scrollHeight;
-			}, [data, follow]);
+				if (el) el.scrollTop = el.scrollHeight;
+			}, [data]);
 
-			const onScroll = () => {
-				const el = scroller.current;
-				if (!el) return;
-				setFollow(el.scrollHeight - el.scrollTop - el.clientHeight < 80);
-			};
-
-			if (error) return h("div", { className: "dcs-listStatus" }, "加载失败：" + error);
 			return h("div", { className: "dcs-detail" },
 				h("div", { className: "dcs-detailHead" },
-					h("span", { className: "dcs-badge", style: { background: SOURCE_META[session.source].color } }, SOURCE_META[session.source].label),
-					h("span", { className: "dcs-detailTitle", title: session.cwd || session.title }, session.title),
-					h("span", { className: "dcs-detailMeta" }, (session.project || "") + " · " + relTime(session.updatedAt) + (data ? " · " + data.count + " 条" : "")),
-					session.live ? h("span", { className: "dcs-liveDot", title: "活跃会话" }) : null,
+					h("button", { className: "dcs-detailBack", onClick: onBack, title: "返回列表" },
+						h("svg", { viewBox: "0 0 16 16", width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 1.5 },
+							h("path", { d: "M10 3L5 8l5 5" })
+						)
+					),
+					h("span", { className: "dcs-detailTitle", title: session.title }, session.title),
+					h("span", { className: "dcs-detailMeta" }, data ? data.count + " 条" : ""),
 				),
-				h("div", { className: "dcs-msgs", ref: scroller, onScroll },
-					loading && !data ? h("div", { className: "dcs-listStatus" }, h("span", { className: "dcs-loading" })) :
-					(data && data.messages.length ? data.messages.map((m) => h(MessageView, { m, key: m.seq })) :
-						h("div", { className: "dcs-listStatus" }, "无消息")),
-					loading && data ? h("div", { className: "dcs-listStatus" }, h("span", { className: "dcs-loading" })) : null,
+				h("div", { className: "dcs-msgs", ref: scroller },
+					loading ? h("div", { className: "dcs-status" }, h("span", { className: "dcs-loading" })) :
+					error ? h("div", { className: "dcs-status" }, "加载失败：" + error) :
+					data && data.messages.length ? data.messages.map((m) => h(MessageView, { m, key: m.seq })) :
+					h("div", { className: "dcs-status" }, "无消息"),
 				),
 			);
 		}
 
-		/* ───────────── React: panel (list + detail) ───────────── */
+		/* ───────────── source group with sessions ───────────── */
 
-		function Panel({ controller, onClose }) {
-			const [source, setSource] = useState("all");
-			const [q, setQ] = useState("");
-			const [debouncedQ, setDebouncedQ] = useState("");
-			const [liveOnly, setLiveOnly] = useState(false);
+		function SourceGroup({ source, sessions, selected, onSelect }) {
+			const [open, setOpen] = useState(true);
+			const meta = SOURCE_META[source];
+			const count = sessions.length;
+
+			if (count === 0) return null;
+
+			return h("div", { className: "dcs-sourceGroup" },
+				h("div", { className: "dcs-sourceHead", onClick: () => setOpen((v) => !v) },
+					h("svg", { className: "dcs-sourceArrow", "data-open": open ? "1" : "0", viewBox: "0 0 16 16", width: 14, height: 14, fill: "currentColor" },
+						h("path", { d: "M6 4l4 4-4 4" })
+					),
+					h("span", { className: "dcs-sourceBadge", style: { background: meta.color } }, meta.icon),
+					h("span", { className: "dcs-sourceLabel" }, meta.label),
+					h("span", { className: "dcs-sourceCount" }, count),
+				),
+				open ? h("div", { className: "dcs-sessionList" },
+					sessions.map((s) => h("button", {
+						key: s.id,
+						className: "dcs-row",
+						"data-selected": selected && selected.id === s.id ? "1" : "0",
+						onClick: () => onSelect(s),
+					},
+						h("div", { className: "dcs-rowTitle" },
+							s.live ? h("span", { className: "dcs-rowLive" }) : null,
+							s.title,
+						),
+						h("div", { className: "dcs-rowMeta" },
+							h("span", { className: "dcs-rowProject", title: s.cwd || s.project }, s.project),
+							h("span", null, relTime(s.updatedAt)),
+							h("span", null, fmtBytes(s.size)),
+						),
+					)),
+				) : null,
+			);
+		}
+
+		/* ───────────── main tree component ───────────── */
+
+		function ChatSyncTree() {
 			const [sessions, setSessions] = useState([]);
-			const [total, setTotal] = useState(0);
 			const [loading, setLoading] = useState(true);
 			const [error, setError] = useState("");
+			const [q, setQ] = useState("");
+			const [liveOnly, setLiveOnly] = useState(false);
 			const [selected, setSelected] = useState(null);
-			const [liveTick, setLiveTick] = useState(0);
 			const [sseOn, setSseOn] = useState(false);
-			const listReload = useRef(0);
-			const listTimer = useRef(undefined);
-
-			// Debounce the search box.
-			useEffect(() => {
-				const t = setTimeout(() => setDebouncedQ(q), 300);
-				return () => clearTimeout(t);
-			}, [q]);
+			const fetchTimer = useRef(undefined);
 
 			const fetchList = useCallback(async () => {
 				try {
-					const res = await getJSON(API.sessions({ source, q: debouncedQ, limit: "300", live: liveOnly ? "1" : "0" }));
+					const res = await getJSON(API.sessions({ source: "all", q, limit: "500", live: liveOnly ? "1" : "0" }));
 					setSessions(res.sessions || []);
-					setTotal(res.total || 0);
 					setError("");
 				} catch (e) {
 					setError(String(e.message || e));
 				} finally {
 					setLoading(false);
 				}
-			}, [source, debouncedQ, liveOnly]);
+			}, [q, liveOnly]);
 
 			useEffect(() => {
 				setLoading(true);
 				void fetchList();
 			}, [fetchList]);
 
-			// SSE live sync for the lifetime of the open panel.
+			// SSE live sync
 			useEffect(() => {
 				let es;
 				try {
@@ -406,163 +272,104 @@ window.__ModuleLoader__.load({
 						return;
 					}
 					if (!frame || frame.type !== "changed") return;
-					// Bump the open detail view immediately when named.
-					const ids = new Set((frame.changed || []).map((c) => c.id));
-					setSelected((cur) => {
-						if (cur && ids.has(cur.id)) setLiveTick((t) => t + 1);
-						return cur;
-					});
-					// Refresh the list on a short trailing edge.
-					if (listTimer.current) clearTimeout(listTimer.current);
-					listTimer.current = setTimeout(() => {
-						listTimer.current = undefined;
-						listReload.current += 1;
+					// Refresh list on changes
+					if (fetchTimer.current) clearTimeout(fetchTimer.current);
+					fetchTimer.current = setTimeout(() => {
+						fetchTimer.current = undefined;
 						void fetchList();
-					}, 800);
+					}, 500);
 				};
 				return () => {
-					if (listTimer.current) clearTimeout(listTimer.current);
+					if (fetchTimer.current) clearTimeout(fetchTimer.current);
 					es.close();
 					setSseOn(false);
 				};
 			}, [fetchList]);
 
-			// Keep the selected row's metadata fresh after list reloads.
-			useEffect(() => {
-				if (!selected) return;
-				const fresh = sessions.find((s) => s.id === selected.id);
-				if (fresh && fresh.updatedAt !== selected.updatedAt) setSelected(fresh);
-			}, [sessions, selected]);
+			// Group sessions by source
+			const grouped = useMemo(() => {
+				const groups = { claude: [], codex: [], cursor: [] };
+				for (const s of sessions) {
+					if (groups[s.source]) groups[s.source].push(s);
+				}
+				return groups;
+			}, [sessions]);
 
-			const chips = [{ id: "all", label: "全部" }].concat(Object.entries(SOURCE_META).map(([id, m]) => ({ id, label: m.label })));
+			// Show detail view if a session is selected
+			if (selected) {
+				return h(SessionDetail, {
+					session: selected,
+					onBack: () => setSelected(null),
+				});
+			}
 
-			return h("div", { className: "dcs-panel" },
-				h("div", { className: "dcs-header" },
-					h("span", { className: "dcs-title" }, "对话同步"),
-					h("span", { className: "dcs-chips" },
-						chips.map((c) => h("button", {
-							key: c.id, className: "dcs-chip", "data-on": source === c.id ? "1" : "0",
-							onClick: () => setSource(c.id),
-						}, c.label)),
+			// Tree view
+			return h("div", { className: "dcs-tree" },
+				h("div", { className: "dcs-toolbar" },
+					h("input", {
+						className: "dcs-search",
+						placeholder: "搜索…",
+						value: q,
+						onChange: (e) => setQ(e.target.value),
+					}),
+					h("button", {
+						className: "dcs-liveBtn",
+						"data-on": liveOnly ? "1" : "0",
+						onClick: () => setLiveOnly((v) => !v),
+						title: "只看活跃会话",
+					},
+						h("span", { className: "dcs-dot" }),
+						"活跃",
 					),
-					h("input", { className: "dcs-search", placeholder: "搜索标题 / 项目 / 路径…", value: q, onChange: (e) => setQ(e.target.value) }),
-					h("button", { className: "dcs-chip dcs-liveChip", "data-on": liveOnly ? "1" : "0", onClick: () => setLiveOnly((v) => !v), title: "只看最近活跃的会话" },
-						h("span", { className: "dcs-dot", "data-off": sseOn ? "0" : "1" }), "动态同步", ),
-					h("span", { style: { fontSize: 11, color: "var(--dsw-alias-label-secondary)", flex: "none" } }, total + " 场"),
-					h("button", { className: "dcs-close", onClick: onClose, title: "关闭面板" }, "✕"),
 				),
-				h("div", { className: "dcs-body" },
-					h("div", { className: "dcs-list" },
-						error ? h("div", { className: "dcs-listStatus" }, "加载失败：" + error) :
-						loading && !sessions.length ? h("div", { className: "dcs-listStatus" }, h("span", { className: "dcs-loading" })) :
-						!sessions.length ? h("div", { className: "dcs-listStatus" }, "没有匹配的会话") :
-						sessions.map((s) => h("button", {
-							key: s.id, className: "dcs-row", "data-on": selected && selected.id === s.id ? "1" : "0",
-							onClick: () => setSelected(s),
-						},
-							h("div", { className: "dcs-rowTop" },
-								h("span", { className: "dcs-badge", style: { background: SOURCE_META[s.source].color } }, SOURCE_META[s.source].label),
-								h("span", { className: "dcs-rowTitle", title: s.title }, s.title),
-								s.live ? h("span", { className: "dcs-liveDot", title: "活跃" }) : null,
-							),
-							h("div", { className: "dcs-rowSub" },
-								h("span", { className: "dcs-rowProject", title: s.cwd || s.project }, s.project),
-								h("span", { className: "dcs-rowTime" }, relTime(s.updatedAt)),
-								h("span", { style: { flex: "none", opacity: 0.7 } }, fmtBytes(s.size)),
-							),
-						)),
-					),
-					selected ? h(DetailPane, { session: selected, liveTick }) :
-						h("div", { className: "dcs-empty" }, "选择左侧会话查看 Claude Code / Codex CLI / Cursor Agent 的本地对话"),
+				h("div", { className: "dcs-scroll" },
+					error ? h("div", { className: "dcs-status" }, "加载失败：" + error) :
+					loading ? h("div", { className: "dcs-status" }, h("span", { className: "dcs-loading" })) :
+					SOURCES.map((src) => h(SourceGroup, {
+						key: src,
+						source: src,
+						sessions: grouped[src] || [],
+						selected,
+						onSelect: setSelected,
+					})),
 				),
 			);
 		}
 
-		/* ───────────── React app root ───────────── */
-
-		function useControllerOpen(controller) {
-			const [open, setOpen] = useState(controller.getSnapshot().panelOpen);
-			useEffect(() => controller.subscribe(() => setOpen(controller.getSnapshot().panelOpen)), [controller]);
-			return open;
-		}
-
-		function App({ controller }) {
-			const open = useControllerOpen(controller);
-			if (!open) return null;
-			return h(Panel, { controller, onClose: () => controller.close() });
-		}
-
-		/* ───────────── panel mount (center column takeover) ───────────── */
-
-		const CONVERSATION_COLUMN = '[data-pane="conversation"], [class*="centerCol"]';
-
-		function mountPanel(controller) {
-			let root = undefined;
-			let container = undefined;
-			let renderDisposer = undefined;
-
-			const ensure = () => {
-				if (container && container.isConnected) return true;
-				const column = document.querySelector(CONVERSATION_COLUMN);
-				if (!column) return false;
-				container = document.createElement("div");
-				container.dataset.dshChatsyncView = "";
-				column.appendChild(container);
-				root = createRoot(container);
-				root.render(h(App, { controller }));
-				return true;
-			};
-
-			// Close when a sibling panel activates; also yield to them.
-			const onSibling = (ev) => {
-				if (ev.detail !== "chatsync") controller.close();
-			};
-			window.addEventListener(ACTIVATE_EVENT, onSibling);
-
-			controller.onOpen = () => { ensure(); };
-			// The shell may re-render the center column (view switches); re-seat.
-			const observer = new MutationObserver(() => {
-				if (controller.panelOpen) ensure();
-			});
-			const startObs = () => {
-				const column = document.querySelector(CONVERSATION_COLUMN);
-				if (column) observer.observe(column.parentElement ?? column, { childList: true, subtree: false });
-			};
-			startObs();
-			const seatTimer = setInterval(() => {
-				if (controller.panelOpen && container && !container.isConnected) ensure();
-			}, 3000);
-
-			renderDisposer = () => {};
-			return () => {
-				window.removeEventListener(ACTIVATE_EVENT, onSibling);
-				observer.disconnect();
-				clearInterval(seatTimer);
-				try {
-					root?.unmount();
-				} catch { /* gone */ }
-				container?.remove();
-				renderDisposer?.();
-			};
-		}
-
 		/* ───────────── plugin entry ───────────── */
 
-		const inject = [];
+		const inject = ["betterSidebar"];
 
 		function apply(ctx) {
 			injectStyles();
-			const controller = new PanelController();
-			const disposers = [];
-			try {
-				disposers.push(mountSidebarEntry(controller));
-				disposers.push(mountPanel(controller));
-			} catch (error) {
-				console.warn("[dsh-chat-sync] mount failed:", error);
-			}
+
+			// Register tab in dsh-better-sidebar
+			const dispose = ctx.betterSidebar.registerTab({
+				id: "chat-sync",
+				title: () => "对话同步",
+				icon: (size) => h("svg", {
+					viewBox: "0 0 16 16",
+					width: size,
+					height: size,
+					fill: "none",
+					stroke: "currentColor",
+					strokeWidth: 1.3,
+					strokeLinecap: "round",
+					strokeLinejoin: "round",
+				},
+					h("path", { d: "M2.5 3.5h11v9h-11z" }),
+					h("path", { d: "M2.5 6h11" }),
+					h("path", { d: "M4.5 8.5h4" }),
+					h("path", { d: "M4.5 10.5h2.5" }),
+				),
+				order: 30,
+				single: true,
+				component: () => h(ChatSyncTree),
+			});
+
 			ctx.effect(() => () => {
-				for (const dispose of disposers.splice(0)) dispose();
-			}, "dsh-chat-sync: ui mounts");
+				dispose();
+			}, "dsh-chat-sync: sidebar tab");
 		}
 
 		exports.apply = apply;

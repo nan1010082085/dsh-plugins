@@ -24,15 +24,13 @@ DSH（DeepSeek Harness）插件：**把 DSH 的对话进度自动上传到腾讯
 ## 安装
 
 ```sh
-# 从 GitHub 安装到 web profile（pnpm add + 自动注册 bundle）
-dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
+# 使用 dsh plugin 安装（推荐）
+dsh plugin --profile web add dsh-plugin-ima-sync
 
 # 重启 dsh web 生效
 ```
 
 `dsh plugin` 会自动把声明了 `dsh.bundle` 的包追加到 profile 的 `dsh.profile.bundles`，无需手动改清单。
-
-> 手动方式：在 `~/.dsh/profiles/web/package.json` 的 `dependencies` 加 `"dsh-plugin-ima-sync": "github:nan1010082085/dsh-plugin-ima-sync"`，然后 `dsh plugin --profile web install`。
 
 ## 配置你自己的 IMA 凭证
 
@@ -90,6 +88,7 @@ dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
 | `enabled` | `true` | 总开关 |
 | `triggerOnTurnEnd` | `true` | 每轮结束上传进度 |
 | `triggerOnSessionEnd` | `true` | 会话销毁时上传总结 |
+| `mode` | `project+date` | 笔记模式：`project+date`（按项目+日期分笔记）或 `daily`（每日日报，所有项目合并） |
 | `clientId` / `apiKey` | 空（读环境变量/本地文件） | IMA OpenAPI 凭证 |
 | `workKbId` | 空 | IMA Work 知识库 ID（全局默认），留空不关联知识库 |
 | `projectKnowledgeBases` | 空对象 | 项目级别的知识库映射，key 为项目名，value 为知识库 ID |

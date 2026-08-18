@@ -1,5 +1,6 @@
 {
   "name": "dsh-plugins",
+  "version": "0.0.0",
   "private": true,
   "description": "DSH (DeepSeek Harness) plugin monorepo: packages are installed into dsh profiles via 'dsh plugin --profile <name> add link:./packages/<pkg>'",
   "license": "MIT"
