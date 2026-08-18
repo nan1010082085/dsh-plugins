@@ -32,11 +32,8 @@ DSH（DeepSeek Harness）插件：**自动同步本地 Claude Code / Codex CLI /
 ## 安装
 
 ```sh
-# 本地 link 安装（开发推荐）
-dsh plugin --profile web add link:/Users/yangdongnan/work/dsh-plugins/packages/mcp-sync
-
-# 或从 GitHub 安装
-dsh plugin --profile web add github:nan1010082085/dsh-mcp-sync
+# 使用 dsh plugin 安装（推荐）
+dsh plugin --profile web add dsh-mcp-sync
 
 # 重启 dsh web 生效
 ```
