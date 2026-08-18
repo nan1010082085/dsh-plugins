@@ -34,6 +34,12 @@ const Config = z.object({
   clientId: z.string().default(""),
   /** IMA OpenAPI API Key。留空依次回退：环境变量 -> ~/.config/ima/api_key。 */
   apiKey: z.string().default(""),
+  /** 手动配置覆盖。设置后将优先使用此配置，忽略环境变量和本地文件。 */
+  manualOverride: z.object({
+    clientId: z.string().default(""),
+    apiKey: z.string().default(""),
+    workKbId: z.string().default(""),
+  }).default({}),
   /** IMA Work 知识库 ID。留空则只创建/追加笔记，不关联知识库。 */
   workKbId: z.string().default(""),
   /** 本机 ima-upload 脚本路径。留空默认 ~/.local/bin/ima-upload；脚本不存在时走直接 API。 */
@@ -68,13 +74,17 @@ function readTrimmed(file) {
 function resolveConfig(config) {
   const base = config && typeof config === "object" ? config : {};
   // 无论是否经过 schemastery 校验，都补齐默认值（对原始 config 也健壮）。
+  
+  // 手动配置覆盖（最高优先级）
+  const manualOverride = base.manualOverride || {};
+  
   return {
     enabled: base.enabled ?? true,
     triggerOnTurnEnd: base.triggerOnTurnEnd ?? true,
     triggerOnSessionEnd: base.triggerOnSessionEnd ?? true,
-    clientId: base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
-    apiKey: base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
-    workKbId: base.workKbId || "",
+    clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
+    apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
+    workKbId: manualOverride.workKbId || base.workKbId || "",
     imaUploadBin: base.imaUploadBin || path.join(HOME, ".local/bin/ima-upload"),
     projectsFile: base.projectsFile || path.join(HOME, ".config/ima/projects.json"),
     cacheDir: base.cacheDir || path.join(HOME, ".cache/ima/daily-notes"),

@@ -3,6 +3,16 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 
+
+export interface ManualOverride {
+  /** IMA OpenAPI Client ID。设置后将覆盖其他配置源。 */
+  clientId?: string;
+  /** IMA OpenAPI API Key。设置后将覆盖其他配置源。 */
+  apiKey?: string;
+  /** IMA Work 知识库 ID。设置后将覆盖其他配置源。 */
+  workKbId?: string;
+}
+
 export interface ImaSyncConfig {
   /** 总开关。false 时插件完全不注册监听。默认 true。 */
   enabled?: boolean;
@@ -30,6 +40,8 @@ export interface ImaSyncConfig {
   maxDetailLength?: number;
   /** ima-upload 脚本超时（毫秒）。默认 120000。 */
   timeoutMs?: number;
+  /** 手动配置覆盖。设置后将优先使用此配置，忽略环境变量和本地文件。 */
+  manualOverride?: ManualOverride;
 }
 
 export declare const name: 'ima-sync';

@@ -16,6 +16,11 @@
 #       # projectsFile: ''      # 默认 ~/.config/ima/projects.json
 #       # maxPromptLength: 300
 #       # maxDetailLength: 20000
+#       # 手动配置覆盖（可选，设置后将优先使用此配置，忽略环境变量和本地文件）
+#       # manualOverride:
+#       #   clientId: ''
+#       #   apiKey: ''
+#       #   workKbId: ''
 
 - insert:
     - id: ima-sync

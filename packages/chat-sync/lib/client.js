@@ -200,6 +200,7 @@ window.__ModuleLoader__.load({
 		}
 
 		function mountSidebarEntry(controller) {
+			if (document.querySelector("[data-dsh-chatsync-entry]") !== null) return () => {};
 			const entry = document.createElement("button");
 			entry.type = "button";
 			entry.dataset.dshChatsyncEntry = "";
@@ -209,29 +210,42 @@ window.__ModuleLoader__.load({
 			entry.innerHTML = '<span class="dcs-entryIcon">' + ENTRY_ICON + '</span><span class="dcs-entryLabel">对话同步</span>';
 			entry.addEventListener("click", () => controller.toggle());
 
-			let observer = undefined;
+			let rootObserver;
+			let placed = false;
 			const syncActive = () => {
 				entry.setAttribute("data-active", controller.panelOpen ? "1" : "0");
 			};
 			controller.subscribe(syncActive);
 
-			const place = () => {
+			const tryPlace = () => {
+				if (placed && !document.body.contains(entry)) {
+					if (rootObserver) rootObserver.disconnect();
+					placed = false;
+				}
+				if (placed) return;
 				const root = sidebarRoot();
-				if (!root || entry.isConnected) return;
+				if (!root) return;
+				if (entry.isConnected) { placed = true; return; }
 				let anchor = root.querySelector('button[class*="newSession"]');
 				if (!anchor) {
 					for (const child of root.children) if (child.tagName === "BUTTON") { anchor = child; break; }
 				}
-				if (anchor && anchor.parentElement) anchor.parentElement.insertBefore(entry, anchor.nextSibling);
+				const row = anchor ? anchor.closest('[class*="logoRow"]') : null;
+				const base = row && row.parentElement === root ? row : anchor;
+				const ref = base ? base.nextElementSibling : null;
+				if (ref) root.insertBefore(entry, ref);
 				else root.appendChild(entry);
+				placed = true;
+				rootObserver = new MutationObserver(tryPlace);
+				rootObserver.observe(root, { childList: true, subtree: true });
 			};
-			place();
-			// Self-heal when a React re-render displaces the row.
-			observer = new MutationObserver(place);
-			const column = document.querySelector('[data-pane="sidebar"], [class*="sidebarCol"]');
-			if (column) observer.observe(column, { childList: true, subtree: true });
+
+			const waitObserver = new MutationObserver(tryPlace);
+			waitObserver.observe(document.body, { childList: true, subtree: true });
+			tryPlace();
 			return () => {
-				observer?.disconnect();
+				waitObserver.disconnect();
+				if (rootObserver) rootObserver.disconnect();
 				entry.remove();
 			};
 		}

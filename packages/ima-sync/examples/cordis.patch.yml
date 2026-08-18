@@ -1,6 +1,8 @@
 # examples/cordis.patch.yml
 # 复制到 ~/.dsh/profiles/web/cordis.patch.yml 并按需修改。
 # 把 <your-...> 占位符替换为你自己的 IMA 凭证（不要提交真实 key 到公开仓库）。
+
+# 方式1：直接配置（推荐简单使用）
 - id: ima-sync
   config:
     enabled: true
@@ -16,3 +18,12 @@
     # maxPromptLength: 300
     # maxDetailLength: 20000
     # timeoutMs: 120000
+
+# 方式2：使用手动配置覆盖（可覆盖环境变量和本地文件）
+# - id: ima-sync
+#   config:
+#     enabled: true
+#     manualOverride:
+#       clientId: <your-ima-openapi-client-id>
+#       apiKey: <your-ima-openapi-api-key>
+#       workKbId: <your-ima-work-knowledge-base-id>

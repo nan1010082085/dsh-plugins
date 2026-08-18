@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-ima-sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH plugin: auto-upload conversation progress to Tencent IMA (daily note + Work knowledge base), mirroring the local Claude Code ima-upload workflow",
   "type": "module",
   "main": "lib/index.js",

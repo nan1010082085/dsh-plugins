@@ -38,11 +38,14 @@ dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
 
 > ⚠️ 本插件**不内置任何密钥**。`clientId` / `apiKey` / `workKbId` 均为配置项，请填入你自己的腾讯 IMA OpenAPI 凭证（获取方式见 [IMA 开放接口](https://ima.qq.com/agent-interface)）。
 
-凭证按以下优先级解析（三者任一即可）：
+凭证按以下优先级解析（四者任一即可）：
 
-1. **profile 补丁配置**（`~/.dsh/profiles/web/cordis.patch.yml`）：
+1. **手动配置覆盖**（最高优先级）：在配置中使用 `manualOverride` 字段，设置后将忽略环境变量和本地文件
+
+2. **profile 补丁配置**（`~/.dsh/profiles/web/cordis.patch.yml`）：
 
 ```yaml
+# 方式1：直接配置（推荐简单使用）
 - id: ima-sync
   config:
     enabled: true
@@ -58,13 +61,23 @@ dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
     # maxPromptLength: 300
     # maxDetailLength: 20000
     # timeoutMs: 120000
+
+# 方式2：使用手动配置覆盖（可覆盖环境变量和本地文件）
+- id: ima-sync
+  config:
+    enabled: true
+    manualOverride:
+      clientId: <your-ima-openapi-client-id>
+      apiKey: <your-ima-openapi-api-key>
+      workKbId: <your-ima-work-knowledge-base-id>
 ```
 
-2. **环境变量**：`IMA_OPENAPI_CLIENTID` / `IMA_OPENAPI_APIKEY`
+3. **环境变量**：`IMA_OPENAPI_CLIENTID` / `IMA_OPENAPI_APIKEY`
 
-3. **本地文件**（本机默认，与 Claude Code 的 ima MCP 共用）：`~/.config/ima/client_id` 与 `~/.config/ima/api_key`
+4. **本地文件**（本机默认，与 Claude Code 的 ima MCP 共用）：`~/.config/ima/client_id` 与 `~/.config/ima/api_key`
 
 > 也支持把 `clientId` / `apiKey` 用 `!!js process.env.XXX` 表达式注入（见 dsh loader 的 `!!js` 约定）。
+
 
 ## 可配置项
 
@@ -75,6 +88,7 @@ dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
 | `triggerOnSessionEnd` | `true` | 会话销毁时上传总结 |
 | `clientId` / `apiKey` | 空（读环境变量/本地文件） | IMA OpenAPI 凭证 |
 | `workKbId` | 空 | IMA Work 知识库 ID，留空不关联知识库 |
+| `manualOverride` | 空对象 | 手动配置覆盖，设置后优先使用，忽略环境变量和本地文件 |
 | `imaUploadBin` | `~/.local/bin/ima-upload` | 本机上传脚本路径 |
 | `projectsFile` | `~/.config/ima/projects.json` | 项目名映射文件 |
 | `cacheDir` | `~/.cache/ima/daily-notes` | 每日笔记缓存目录 |
