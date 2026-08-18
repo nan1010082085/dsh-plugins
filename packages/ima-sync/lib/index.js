@@ -40,8 +40,10 @@ const Config = z.object({
     apiKey: z.string().default(""),
     workKbId: z.string().default(""),
   }).default({}),
-  /** IMA Work 知识库 ID。留空则只创建/追加笔记，不关联知识库。 */
+  /** IMA Work 知识库 ID（全局默认）。留空则只创建/追加笔记，不关联知识库。 */
   workKbId: z.string().default(""),
+  /** 项目级别的知识库映射。key 为项目名，value 为知识库 ID。 */
+  projectKnowledgeBases: z.record(z.string()).default({}),
   /** 本机 ima-upload 脚本路径。留空默认 ~/.local/bin/ima-upload；脚本不存在时走直接 API。 */
   imaUploadBin: z.string().default(""),
   /** 项目名映射文件（cwd -> 项目名）。留空默认 ~/.config/ima/projects.json。 */
@@ -85,6 +87,7 @@ function resolveConfig(config) {
     clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
     apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
     workKbId: manualOverride.workKbId || base.workKbId || "",
+    projectKnowledgeBases: base.projectKnowledgeBases || {},
     imaUploadBin: base.imaUploadBin || path.join(HOME, ".local/bin/ima-upload"),
     projectsFile: base.projectsFile || path.join(HOME, ".config/ima/projects.json"),
     cacheDir: base.cacheDir || path.join(HOME, ".cache/ima/daily-notes"),
@@ -108,6 +111,18 @@ function resolveProjectName(cwd, projectsFile, fallback) {
   }
   return fallback || (cwd ? path.basename(cwd) : "DSH");
 }
+
+
+/** 获取项目对应的知识库 ID（优先使用项目级配置，否则使用全局配置）。 */
+function getWorkKbIdForProject(project, cfg) {
+  // 优先使用项目级别的知识库映射
+  if (cfg.projectKnowledgeBases && cfg.projectKnowledgeBases[project]) {
+    return cfg.projectKnowledgeBases[project];
+  }
+  // 否则使用全局配置
+  return cfg.workKbId;
+}
+
 
 /** 从消息 content blocks 提取纯文本。 */
 function messageText(message) {
@@ -280,12 +295,14 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
   } catch {
     /* ignore */
   }
-  if (workKbId) {
+  // 使用项目级别的知识库 ID
+  const projectWorkKbId = getWorkKbIdForProject(project, cfg);
+  if (projectWorkKbId) {
     try {
       await callIma("openapi/wiki/v1/add_knowledge", {
         media_type: 11,
         title: dailyTitle,
-        knowledge_base_id: workKbId,
+        knowledge_base_id: projectWorkKbId,
         note_info: { content_id: newId },
       }, creds);
     } catch (err) {

@@ -24,8 +24,10 @@ export interface ImaSyncConfig {
   clientId?: string;
   /** IMA OpenAPI API Key。留空依次回退：环境变量 -> ~/.config/ima/api_key。 */
   apiKey?: string;
-  /** IMA Work 知识库 ID。留空则只创建/追加笔记，不关联知识库。 */
+  /** IMA Work 知识库 ID（全局默认）。留空则只创建/追加笔记，不关联知识库。 */
   workKbId?: string;
+  /** 项目级别的知识库映射。key 为项目名，value 为知识库 ID。 */
+  projectKnowledgeBases?: Record<string, string>;
   /** 本机 ima-upload 脚本路径。留空默认 ~/.local/bin/ima-upload；脚本不存在时走直接 API。 */
   imaUploadBin?: string;
   /** 项目名映射文件（cwd -> 项目名）。留空默认 ~/.config/ima/projects.json。 */

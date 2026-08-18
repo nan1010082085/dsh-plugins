@@ -51,7 +51,11 @@ dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
     enabled: true
     clientId: <your-ima-openapi-client-id>
     apiKey: <your-ima-openapi-api-key>
-    workKbId: <your-ima-work-knowledge-base-id>   # 留空则不关联知识库
+    workKbId: <your-ima-work-knowledge-base-id>   # 全局默认知识库 ID
+    # 项目级别的知识库映射（可选）
+    # projectKnowledgeBases:
+    #   my-project: <project-specific-kb-id>
+    #   another-project: <another-kb-id>
     # triggerOnTurnEnd: true
     # triggerOnSessionEnd: true
     # imaUploadBin: ''        # 默认 ~/.local/bin/ima-upload；留空且脚本不存在时走直接 API
@@ -87,7 +91,8 @@ dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
 | `triggerOnTurnEnd` | `true` | 每轮结束上传进度 |
 | `triggerOnSessionEnd` | `true` | 会话销毁时上传总结 |
 | `clientId` / `apiKey` | 空（读环境变量/本地文件） | IMA OpenAPI 凭证 |
-| `workKbId` | 空 | IMA Work 知识库 ID，留空不关联知识库 |
+| `workKbId` | 空 | IMA Work 知识库 ID（全局默认），留空不关联知识库 |
+| `projectKnowledgeBases` | 空对象 | 项目级别的知识库映射，key 为项目名，value 为知识库 ID |
 | `manualOverride` | 空对象 | 手动配置覆盖，设置后优先使用，忽略环境变量和本地文件 |
 | `imaUploadBin` | `~/.local/bin/ima-upload` | 本机上传脚本路径 |
 | `projectsFile` | `~/.config/ima/projects.json` | 项目名映射文件 |

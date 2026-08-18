@@ -415,6 +415,66 @@ window.__ModuleLoader__.load({
 					) : null,
 				),
 
+				
+				// Project knowledge bases
+				h("div", { className: "ims-section" },
+					h("div", { className: "ims-sectionTitle" }, "项目知识库映射"),
+					h("div", { className: "ims-hint", marginBottom: "12px" }, "为不同项目配置不同的 IMA 知识库 ID"),
+
+					// 现有映射列表
+					Object.entries(config.projectKnowledgeBases).map(([project, kbId]) =>
+						h("div", { key: project, className: "ims-field", style: { display: "flex", gap: "8px", alignItems: "center" } },
+							h("input", {
+								className: "ims-input",
+								type: "text",
+								value: project,
+								disabled: true,
+								style: { flex: 1, maxWidth: "200px" },
+							}),
+							h("input", {
+								className: "ims-input",
+								type: "text",
+								value: kbId,
+								onChange: (e) => handleUpdateProjectKb(project, e.target.value),
+								placeholder: "知识库 ID",
+								style: { flex: 1 },
+							}),
+							h("button", {
+								className: "ims-btn ims-btn-secondary",
+								onClick: () => handleRemoveProjectKb(project),
+								style: { padding: "0 8px", height: "32px" },
+							}, "删除"),
+						)
+					),
+
+					// 添加新映射
+					h("div", { className: "ims-field", style: { display: "flex", gap: "8px", alignItems: "center", marginTop: "12px" } },
+						h("input", {
+							className: "ims-input",
+							type: "text",
+							value: newProjectName,
+							onChange: (e) => setNewProjectName(e.target.value),
+							placeholder: "项目名",
+							style: { flex: 1, maxWidth: "200px" },
+						}),
+						h("input", {
+							className: "ims-input",
+							type: "text",
+							value: newProjectKbId,
+							onChange: (e) => setNewProjectKbId(e.target.value),
+							placeholder: "知识库 ID",
+							style: { flex: 1 },
+						}),
+						h("button", {
+							className: "ims-btn ims-btn-primary",
+							onClick: handleAddProjectKb,
+							disabled: !newProjectName.trim() || !newProjectKbId.trim(),
+							style: { padding: "0 12px", height: "32px" },
+						}, "添加"),
+					),
+				),
+
+
 				// Advanced settings
 				h("div", { className: "ims-section" },
 					h("div", { className: "ims-sectionTitle" }, "高级设置"),
