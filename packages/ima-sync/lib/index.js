@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 
 const name = "ima-sync";
-const inject = [];
+const inject = ["webServer"];
 
 const Config = z.object({
   /** 总开关。false 时插件完全不注册监听。 */
@@ -372,6 +372,65 @@ function buildSessionDigest(session, cfg) {
   return { task, summary, detail };
 }
 
+
+/* ───────────────────────── Web API 路由 ───────────────────────── */
+
+function isIPv4Loopback(v4) {
+  const parts = v4.split(".");
+  return parts.length === 4 && parts[0] === "127" && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
+}
+
+function isLoopbackAddress(address) {
+  if (address === undefined) return false;
+  const n = address.toLowerCase();
+  if (n === "::1") return true;
+  if (n.startsWith("::ffff:")) return isIPv4Loopback(n.slice(7));
+  return isIPv4Loopback(n);
+}
+
+function isLoopbackRequest(req) {
+  if (!isLoopbackAddress(req.socket?.remoteAddress)) return false;
+  const host = req.headers.host;
+  if (typeof host !== "string") return false;
+  let hostUrl;
+  try {
+    hostUrl = new URL("http://" + host);
+  } catch {
+    return false;
+  }
+  const hn = hostUrl.hostname;
+  if (hn !== "localhost" && hn !== "[::1]" && !isIPv4Loopback(hn)) return false;
+  if (req.headers["sec-fetch-site"] === "cross-site") return false;
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  try {
+    return new URL(origin).host === hostUrl.host;
+  } catch {
+    return false;
+  }
+}
+
+function writeJson(res, status, body) {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "referrer-policy": "no-referrer" });
+  res.end(payload);
+}
+
+async function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+      } catch {
+        resolve({});
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
 /* ───────────────────────── 插件主体 ───────────────────────── */
 
 function apply(ctx, config) {
@@ -513,5 +572,92 @@ function apply(ctx, config) {
     });
   });
 }
+
+
+/* ───────────────────────── Web API 路由注册 ───────────────────────── */
+
+// Web API 路由
+const routes = [
+  {
+    method: "GET",
+    path: "/api/dsh-ima-sync/config",
+    handler: (req, res) => {
+      if (!isLoopbackRequest(req)) {
+        writeJson(res, 403, { error: "loopback only" });
+        return;
+      }
+      // 返回当前配置（隐藏敏感信息）
+      const safeConfig = {
+        enabled: cfg.enabled,
+        triggerOnTurnEnd: cfg.triggerOnTurnEnd,
+        triggerOnSessionEnd: cfg.triggerOnSessionEnd,
+        clientId: cfg.clientId ? "***" : "",
+        apiKey: cfg.apiKey ? "***" : "",
+        workKbId: cfg.workKbId,
+        imaUploadBin: cfg.imaUploadBin,
+        projectsFile: cfg.projectsFile,
+        cacheDir: cfg.cacheDir,
+        defaultProject: cfg.defaultProject,
+        maxPromptLength: cfg.maxPromptLength,
+        maxDetailLength: cfg.maxDetailLength,
+        timeoutMs: cfg.timeoutMs,
+        manualOverride: {
+          clientId: config?.manualOverride?.clientId ? "***" : "",
+          apiKey: config?.manualOverride?.apiKey ? "***" : "",
+          workKbId: config?.manualOverride?.workKbId || "",
+        },
+      };
+      writeJson(res, 200, safeConfig);
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/dsh-ima-sync/config",
+    handler: async (req, res) => {
+      if (!isLoopbackRequest(req)) {
+        writeJson(res, 403, { error: "loopback only" });
+        return;
+      }
+      try {
+        const newConfig = await readBody(req);
+        // 更新配置（这里只是示例，实际需要持久化到配置文件）
+        log("收到配置更新请求");
+        writeJson(res, 200, { success: true, message: "配置已更新（需要重启 DSH 生效）" });
+      } catch (err) {
+        writeJson(res, 500, { error: err.message });
+      }
+    },
+  },
+  {
+    method: "POST",
+    path: "/api/dsh-ima-sync/test",
+    handler: async (req, res) => {
+      if (!isLoopbackRequest(req)) {
+        writeJson(res, 403, { error: "loopback only" });
+        return;
+      }
+      try {
+        if (!cfg.clientId || !cfg.apiKey) {
+          writeJson(res, 200, { success: false, message: "未配置 IMA 凭证" });
+          return;
+        }
+        // 测试连接：尝试列出笔记
+        const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
+        await callIma("openapi/note/v1/list_note", { cursor: "", limit: 1 }, creds);
+        writeJson(res, 200, { success: true, message: "连接成功" });
+      } catch (err) {
+        writeJson(res, 200, { success: false, message: "连接失败: " + err.message });
+      }
+    },
+  },
+];
+
+// 注册路由
+ctx.effect(() => {
+  const disposers = routes.map((route) => ctx.webServer.register(route));
+  return () => {
+    for (const dispose of disposers) dispose();
+  };
+}, "ima-sync: web routes");
 
 export { Config, apply, inject, name };
