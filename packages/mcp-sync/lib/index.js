@@ -16,7 +16,7 @@ import { makeRoutes } from "./routes.js";
 export const name = "mcp-sync";
 
 /** Requires webServer for routes and tools for tool registration. */
-export const inject = ["webServer"];
+export const inject = ["webServer", "tools"];
 
 /** Plugin config schema. */
 export const Config = z.object({
