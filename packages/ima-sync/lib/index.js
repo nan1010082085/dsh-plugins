@@ -677,26 +677,31 @@ function apply(ctx, config) {
           return;
         }
         if (req.method === "GET") {
+          // 合并已保存的配置
+          let saved = {};
+          try {
+            const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
+            if (existsSync(configFile)) saved = JSON.parse(readFileSync(configFile, "utf8"));
+          } catch {}
+          const merged = { ...cfg, ...saved };
           const safeConfig = {
-            enabled: cfg.enabled,
-            triggerOnTurnEnd: cfg.triggerOnTurnEnd,
-            triggerOnSessionEnd: cfg.triggerOnSessionEnd,
-            mode: cfg.mode,
-            clientId: cfg.clientId ? "***" : "",
-            apiKey: cfg.apiKey ? "***" : "",
-            workKbId: cfg.workKbId,
-            imaUploadBin: cfg.imaUploadBin,
-            projectsFile: cfg.projectsFile,
-            cacheDir: cfg.cacheDir,
-            defaultProject: cfg.defaultProject,
-            maxPromptLength: cfg.maxPromptLength,
-            maxDetailLength: cfg.maxDetailLength,
-            timeoutMs: cfg.timeoutMs,
-            manualOverride: {
-              clientId: config?.manualOverride?.clientId ? "***" : "",
-              apiKey: config?.manualOverride?.apiKey ? "***" : "",
-              workKbId: config?.manualOverride?.workKbId || "",
-            },
+            enabled: merged.enabled ?? true,
+            triggerOnTurnEnd: merged.triggerOnTurnEnd ?? true,
+            triggerOnSessionEnd: merged.triggerOnSessionEnd ?? true,
+            mode: merged.mode || "project+date",
+            clientId: merged.clientId ? "***" : "",
+            apiKey: merged.apiKey ? "***" : "",
+            workKbId: merged.workKbId || "",
+            workKbName: merged.workKbName || "",
+            imaUploadBin: merged.imaUploadBin || "",
+            projectsFile: merged.projectsFile || "",
+            cacheDir: merged.cacheDir || "",
+            defaultProject: merged.defaultProject || "",
+            maxPromptLength: merged.maxPromptLength ?? 300,
+            maxDetailLength: merged.maxDetailLength ?? 20000,
+            timeoutMs: merged.timeoutMs ?? 120000,
+            manualOverride: merged.manualOverride || { clientId: "", apiKey: "", workKbId: "" },
+            projectKnowledgeBases: merged.projectKnowledgeBases || {},
           };
           writeJson(res, 200, safeConfig);
           return;
