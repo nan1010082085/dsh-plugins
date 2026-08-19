@@ -16,7 +16,7 @@ import { makeRoutes } from "./routes.js";
 export const name = "mcp-sync";
 
 /** Requires webServer for routes and tools for tool registration. */
-export const inject = ["webServer", "tools"];
+export const inject = ["webServer"];
 
 /** Plugin config schema. */
 export const Config = z.object({
@@ -151,8 +151,8 @@ export function apply(ctx, config) {
 
     ctx.logger.info("[mcp-sync] connected " + connectedCount + "/" + serverNames.length + " servers");
 
-    // 注册工具到 DSH
-    if (opts.registerTools && connectedCount > 0) {
+    // 注册工具到 DSH（需要 tools 服务，仅 headless/agent profile 可用）
+    if (opts.registerTools && connectedCount > 0 && ctx.tools) {
       disposeTools();
       try {
         const { registered, disposers } = registerMcpTools(ctx, clientManager, (level, msg) => ctx.logger[level](msg));
@@ -163,6 +163,8 @@ export function apply(ctx, config) {
       } catch (error) {
         ctx.logger.warn("[mcp-sync] tool registration failed: " + (error?.message || error));
       }
+    } else if (opts.registerTools && connectedCount > 0 && !ctx.tools) {
+      ctx.logger.info("[mcp-sync] tools service not available (web profile), skipping tool registration");
     }
   }
 
@@ -191,8 +193,10 @@ export function apply(ctx, config) {
     };
   }, "dsh-mcp-sync: routes & tools");
 
-  // 注册 meta 工具（mcp_call、mcp_list_tools）
-  const dCall = registerMcpCallTool(ctx, clientManager);
-  const dList = registerMcpListTools(ctx, clientManager);
-  ctx.logger.info("[mcp-sync] meta tools registered (mcp_call, mcp_list_tools)");
+  // 注册 meta 工具（需要 tools 服务）
+  if (ctx.tools) {
+    const dCall = registerMcpCallTool(ctx, clientManager);
+    const dList = registerMcpListTools(ctx, clientManager);
+    ctx.logger.info("[mcp-sync] meta tools registered (mcp_call, mcp_list_tools)");
+  }
 }
