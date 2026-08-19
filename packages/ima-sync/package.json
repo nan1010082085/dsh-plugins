@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-ima-sync",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "DSH plugin: auto-upload conversation progress to Tencent IMA (daily note + Work knowledge base), mirroring the local Claude Code ima-upload workflow",
   "type": "module",
   "main": "lib/index.js",
@@ -28,11 +28,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nan1010082085/dsh-plugin-ima-sync.git"
+    "url": "git+https://github.com/nan1010082085/dsh-plugins.git",
+    "directory": "packages/ima-sync"
   },
-  "homepage": "https://github.com/nan1010082085/dsh-plugin-ima-sync#readme",
+  "homepage": "https://github.com/nan1010082085/dsh-plugins#readme",
   "bugs": {
-    "url": "https://github.com/nan1010082085/dsh-plugin-ima-sync/issues"
+    "url": "https://github.com/nan1010082085/dsh-plugins/issues"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org"

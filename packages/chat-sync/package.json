@@ -1,6 +1,6 @@
 {
   "name": "dsh-chat-sync",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "DSH plugin: auto-import local AI CLI conversations (Claude Code, Codex CLI, Cursor Agent) as real DSH sessions",
   "type": "module",
   "main": "lib/index.js",
@@ -19,11 +19,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nan1010082085/dsh-chat-sync.git"
+    "url": "git+https://github.com/nan1010082085/dsh-plugins.git",
+    "directory": "packages/chat-sync"
   },
-  "homepage": "https://github.com/nan1010082085/dsh-chat-sync#readme",
+  "homepage": "https://github.com/nan1010082085/dsh-plugins#readme",
   "bugs": {
-    "url": "https://github.com/nan1010082085/dsh-chat-sync/issues"
+    "url": "https://github.com/nan1010082085/dsh-plugins/issues"
   },
   "keywords": [
     "dsh",
