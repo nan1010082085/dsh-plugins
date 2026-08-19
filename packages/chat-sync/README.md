@@ -3,7 +3,7 @@
 [![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
 [![npm](https://img.shields.io/badge/npm-dsh--chat--sync-green?logo=npm)](https://www.npmjs.com/package/dsh-chat-sync)
 
-DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor Agent 的对话自动导入为真正的 DSH 会话**，可在 DSH 侧边栏继续对话。
+DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor Agent 的对话自动导入为 DSH 会话**，在侧边栏统一查看。
 
 ## 功能
 
@@ -32,8 +32,7 @@ DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor A
    - 匹配到 → 直接使用
    - 未匹配 → 自动创建新工作区目录
 3. **创建会话**：通过 DSH API 创建新会话，挂载到对应工作区
-4. **注入上下文**：将源对话的完整历史格式化为上下文消息，作为第一个 user message 注入
-5. **命名**：会话标题格式为 `[来源] 原始标题`（如 `[Claude] 修复登录bug`）
+4. **命名**：会话标题格式为 `[来源] 原始标题`（如 `[Claude] 修复登录bug`）
 
 ### 状态追踪
 
@@ -60,7 +59,6 @@ dsh plugin --profile web add dsh-chat-sync
     # 自动导入
     autoImport: true               # 自动导入为 DSH 会话
     autoImportIntervalMs: 60000    # 扫描间隔（毫秒）
-    maxImportChars: 50000          # 导入上下文最大字符数
     # 高级
     maxSessions: 500               # 会话列表上限
     maxMessageChars: 8000          # 单条消息截断长度
@@ -76,7 +74,6 @@ dsh plugin --profile web add dsh-chat-sync
 | `syncToWorkspace` | `true` | 文件复制到 .chat-sync 目录 |
 | `autoImport` | `true` | 自动导入为 DSH 会话 |
 | `autoImportIntervalMs` | `60000` | 自动导入扫描间隔 |
-| `maxImportChars` | `50000` | 导入上下文最大字符数 |
 
 ## API（均 loopback-only）
 
