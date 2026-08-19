@@ -444,10 +444,11 @@ function apply(ctx, config) {
   /** 知识库名称 -> ID 映射（异步加载）。 */
   let kbNameMap = {};
   const kbNameMapReady = (async () => {
-    if (!cfg.workKbName && !Object.keys(cfg.projectKnowledgeBases).some(k => !/^\d+$/.test(cfg.projectKnowledgeBases[k]) && !cfg.projectKnowledgeBases[k].includes("-"))) {
+    const initCfg = resolveConfig(config);
+    if (!initCfg.workKbName && !Object.keys(initCfg.projectKnowledgeBases).some(k => !/^\d+$/.test(initCfg.projectKnowledgeBases[k]) && !initCfg.projectKnowledgeBases[k].includes("-"))) {
       return; // 没有按名称配置，不需要查询
     }
-    const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
+    const creds = { clientId: initCfg.clientId, apiKey: initCfg.apiKey };
     kbNameMap = await fetchKnowledgeBaseMap(creds);
     log(`已加载知识库映射：${Object.keys(kbNameMap).length} 个`);
   })();
@@ -464,33 +465,35 @@ function apply(ctx, config) {
     queues.set(sessionId, next);
   };
 
-  /** 统一的「构建记录 -> 上传」入口。 */
+  /** 统一的「构建记录 -> 上传」入口。每次上传时重新读取配置。 */
   const uploadRecord = (session, record) => {
+    // 每次上传时重新读取配置（支持运行时切换）
+    const liveCfg = resolveConfig(config);
     const cwd = session?.header?.cwd || session?.cwd || process.cwd();
-    const project = resolveProjectName(cwd, cfg.defaultProject);
-    console.log(`[ima-sync] 上传 | session=${session?.id?.slice(0,8)} | cwd=${cwd} | project=${project} | mode=${cfg.mode} | task=${record.task?.slice(0,40)}`);
+    const project = resolveProjectName(cwd, liveCfg.defaultProject);
+    console.log(`[ima-sync] 上传 | session=${session?.id?.slice(0,8)} | cwd=${cwd} | project=${project} | mode=${liveCfg.mode} | task=${record.task?.slice(0,40)}`);
     return (async () => {
-      if (cfg.imaUploadBin && existsSync(cfg.imaUploadBin)) {
-        await runImaUpload(cfg.imaUploadBin, ["-t", record.task, "-s", record.summary, "-d", record.detail], cwd, cfg.timeoutMs);
+      if (liveCfg.imaUploadBin && existsSync(liveCfg.imaUploadBin)) {
+        await runImaUpload(liveCfg.imaUploadBin, ["-t", record.task, "-s", record.summary, "-d", record.detail], cwd, liveCfg.timeoutMs);
         log(`已上传（脚本）→ ${project}：${oneLine(record.task)}`);
         return { via: "script", noteId: "" };
       }
       const date = localDate();
-      const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
+      const creds = { clientId: liveCfg.clientId, apiKey: liveCfg.apiKey };
       // 等待知识库映射加载完成
       await kbNameMapReady;
-      const workKbId = getWorkKbIdForProject(project, cfg, kbNameMap);
+      const workKbId = getWorkKbIdForProject(project, liveCfg, kbNameMap);
       const res = await uploadDirect({
         creds,
         project,
         task: record.task,
         summary: record.summary,
         detail: record.detail,
-        cacheDir: cfg.cacheDir,
+        cacheDir: liveCfg.cacheDir,
         workKbId,
-        projectKnowledgeBases: cfg.projectKnowledgeBases,
+        projectKnowledgeBases: liveCfg.projectKnowledgeBases,
         date,
-        mode: cfg.mode,
+        mode: liveCfg.mode,
       });
       log(`已上传（API）→ ${project}：${oneLine(record.task)} note_id=${res.noteId}`);
       return res;
