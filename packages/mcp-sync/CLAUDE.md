@@ -2,16 +2,29 @@
 
 ## 插件概述
 
-连接 MCP 服务器、发现工具并注册到 DSH 工具系统，让模型直接调用 MCP 工具。
+统一 MCP 管理：扫描各来源 → 同步到注册表 → 连接 → 注册工具。同步后的 MCP 是一等公民，可编辑、可删除、可直接调用。
+
+## 核心架构
+
+```
+扫描来源 (Claude/Cursor/Codex/DSH)
+         ↓
+    统一注册表 (~/.dsh/mcp-registry.json)
+         ↓
+    MCP 连接管理器
+         ↓
+    DSH 工具注册 (mcp__<name>__<tool>)
+         ↓
+    模型直接调用
+```
 
 ## 安装（强制）
 
 ```sh
-# 优先使用 dsh plugin 安装
 dsh plugin --profile web add dsh-mcp-sync
 ```
 
-## 发布流程（每次修改必须遵循）
+## 发布流程
 
 1. 修改 lib/ 下的文件
 2. 更新 package.json 的 version
@@ -23,49 +36,37 @@ dsh plugin --profile web add dsh-mcp-sync
 
 | 文件 | 用途 |
 |------|------|
-| lib/index.js | 服务端：MCP 客户端管理、工具注册、路由注册、定时同步 |
-| lib/mcp-client.js | MCP 连接管理器（stdio/SSE/HTTP transport、连接池、生命周期） |
-| lib/mcp-tools.js | MCP 工具 → DSH 工具注册（defineTool + JSON Schema 转换） |
-| lib/sources.js | 数据源：Claude/Codex/Cursor/DSH MCP 配置扫描 |
-| lib/routes.js | API 路由：服务列表、连接管理、工具调用 |
-| lib/client.js | 客户端：侧边栏标签页、连接状态、工具展示 |
-| cordis.patch.yml | Loader 注册补丁 |
-| package.json | 包配置（dsh.bundle + dsh.client） |
+| lib/index.js | 服务端主入口：同步、连接、工具注册 |
+| lib/registry.js | **统一 MCP 注册表**（CRUD、导入） |
+| lib/mcp-client.js | MCP 连接管理器（stdio/SSE/HTTP） |
+| lib/mcp-tools.js | MCP 工具 → DSH 工具注册 |
+| lib/sources.js | 数据源扫描（Claude/Cursor/Codex/DSH） |
+| lib/routes.js | API 路由（注册表 CRUD + 连接管理） |
+| lib/client.js | 客户端 UI |
 
-## 服务端规范（lib/index.js）
+## 注册表 vs 来源
 
-- 导出：{ name, inject, Config, apply }
-- inject = ["webServer", "tools"]
-- 必须使用 ctx.logger.info/warn 输出日志
-- 日志格式：[mcp-sync] 消息内容
+- **来源** (sources.js): 只读扫描 Claude/Cursor/Codex/DSH 配置
+- **注册表** (registry.js): 统一存储，可编辑、可删除
+- **同步**: 来源 → 注册表（不覆盖已存在的）
 
-## MCP 客户端架构
+## API 路由
 
-- McpClientManager 管理连接池（Map<id, {client, transport, tools, state}>）
-- 支持 stdio、sse、streamable-http 三种 transport
-- 连接时自动调用 tools/list 发现工具
-- 调用工具时通过 client.callTool() 转发
-
-## 工具注册
-
-- 每个 MCP 工具注册为 mcp__<serverId>__<toolName>
-- 使用 defineTool({ name, description, parameters, output, execute })
-- JSON Schema → DSH ParameterSchemaSpec 自动转换
-- 元工具 mcp_call 和 mcp_list_tools 提供动态调用和发现
-
-## 数据源
-
-| 源 | 配置路径 | 格式 |
-|------|----------|------|
-| Claude Code | ~/.claude/claude_desktop_config.json | JSON |
-| Cursor Agent | ~/.cursor/mcp.json | JSON |
-| Codex CLI | ~/.codex/config.toml | TOML |
-| DSH | ~/.dsh/mcp.json | JSON |
-| 自定义 | ~/.dsh/mcp-sync/custom.json | JSON |
+| 路由 | 方法 | 说明 |
+|------|------|------|
+| /api/dsh-mcp-sync/registry | GET | 列出所有注册的 MCP |
+| /api/dsh-mcp-sync/registry | POST | 添加/更新 MCP |
+| /api/dsh-mcp-sync/registry | DELETE | 删除 MCP |
+| /api/dsh-mcp-sync/sync | POST | 从来源同步到注册表 |
+| /api/dsh-mcp-sync/sources | GET | 查看来源配置（只读） |
+| /api/dsh-mcp-sync/connections | GET | 连接状态 |
+| /api/dsh-mcp-sync/connect | POST | 连接服务器 |
+| /api/dsh-mcp-sync/disconnect | POST | 断开连接 |
+| /api/dsh-mcp-sync/tools | GET | 列出工具 |
+| /api/dsh-mcp-sync/call | POST | 调用工具 |
 
 ## 依赖
 
 - @modelcontextprotocol/sdk — MCP 协议客户端
 - @deepseek-ai/dsh-tools — defineTool 工具定义
 - @deepseek-ai/schemastery — 配置 schema
-- dsh-better-sidebar — 侧边栏标签页系统

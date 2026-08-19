@@ -1,28 +1,24 @@
 /**
  * dsh-mcp-sync routes: the /api/dsh-mcp-sync family.
  *
- *   GET    /api/dsh-mcp-sync/status       source availability + connection status
- *   GET    /api/dsh-mcp-sync/servers       deduped MCP server list
- *   GET    /api/dsh-mcp-sync/config        raw config from each source
- *   GET    /api/dsh-mcp-sync/custom        list custom MCP servers
- *   POST   /api/dsh-mcp-sync/custom        add custom MCP server
- *   DELETE /api/dsh-mcp-sync/custom        delete custom MCP server
- *   GET    /api/dsh-mcp-sync/connections   MCP client connection status
- *   POST   /api/dsh-mcp-sync/connect       connect to a specific MCP server
- *   POST   /api/dsh-mcp-sync/disconnect    disconnect from a specific MCP server
- *   GET    /api/dsh-mcp-sync/tools         list all MCP tools across connected servers
- *   POST   /api/dsh-mcp-sync/call          call an MCP tool directly
- *
- * Every route is loopback-only: MCP configs may contain secrets.
+ * 统一 MCP 管理 API：
+ *   GET    /api/dsh-mcp-sync/registry        列出所有注册的 MCP 服务器
+ *   POST   /api/dsh-mcp-sync/registry        添加/更新 MCP 服务器
+ *   DELETE /api/dsh-mcp-sync/registry        删除 MCP 服务器
+ *   POST   /api/dsh-mcp-sync/sync            从各来源同步到注册表
+ *   GET    /api/dsh-mcp-sync/sources         查看各来源配置（只读）
+ *   GET    /api/dsh-mcp-sync/connections     MCP 连接状态
+ *   POST   /api/dsh-mcp-sync/connect         连接到 MCP 服务器
+ *   POST   /api/dsh-mcp-sync/disconnect      断开连接
+ *   GET    /api/dsh-mcp-sync/tools           列出所有已发现的 MCP 工具
+ *   POST   /api/dsh-mcp-sync/call            调用 MCP 工具
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { loadRegistry, upsertServer, removeServer, listServers, importServers } from "./registry.js";
 
 const API = {
-  status: "/api/dsh-mcp-sync/status",
-  servers: "/api/dsh-mcp-sync/servers",
-  config: "/api/dsh-mcp-sync/config",
-  custom: "/api/dsh-mcp-sync/custom",
+  registry: "/api/dsh-mcp-sync/registry",
+  sync: "/api/dsh-mcp-sync/sync",
+  sources: "/api/dsh-mcp-sync/sources",
   connections: "/api/dsh-mcp-sync/connections",
   connect: "/api/dsh-mcp-sync/connect",
   disconnect: "/api/dsh-mcp-sync/disconnect",
@@ -95,36 +91,15 @@ function readBody(req) {
   });
 }
 
-/* ─────────────── custom MCP storage ─────────────── */
-
-function getCustomPath(home) {
-  return join(home, ".dsh", "mcp-sync", "custom.json");
-}
-
-function readCustomServers(home) {
-  const path = getCustomPath(home);
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function writeCustomServers(home, servers) {
-  const path = getCustomPath(home);
-  const dir = dirname(path);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(path, JSON.stringify(servers, null, 2), "utf8");
-}
-
 /* ─────────────── route family ─────────────── */
 
 /**
  * Build the route family.
- * @param {{sources: import("./sources.js").McpSources, config: object, clientManager: import("./mcp-client.js").McpClientManager}} deps
+ * @param {{sources: object, config: object, clientManager: object}} deps
  */
 export function makeRoutes(deps) {
   const { sources, config, clientManager } = deps;
+  const home = deps.home || undefined;
 
   const guard = (req, res) => {
     if (!isLoopbackRequest(req)) {
@@ -135,63 +110,34 @@ export function makeRoutes(deps) {
   };
 
   const routes = [
-    /* ── GET /status ── */
+    /* ── GET /registry - 列出所有注册的 MCP 服务器 ── */
     {
       kind: "exact",
-      path: API.status,
+      path: API.registry,
       handler: (req, res) => {
         if (req.method !== "GET" || !guard(req, res)) return;
         try {
-          const sourceStatus = sources.status();
-          const connStatus = clientManager ? clientManager.getStatus() : {};
-          writeJson(res, 200, { ...sourceStatus, connections: connStatus });
+          const servers = listServers(home);
+          writeJson(res, 200, { servers, total: servers.length });
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
         }
       },
     },
 
-    /* ── GET /servers ── */
+    /* ── POST /registry - 添加/更新 MCP 服务器 ── */
     {
       kind: "exact",
-      path: API.servers,
-      handler: (req, res) => {
-        if (req.method !== "GET" || !guard(req, res)) return;
+      path: API.registry,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res)) return;
         try {
-          const url = new URL(req.url ?? "/", "http://localhost");
-          const source = query(url, "source");
-          const result = sources.scan();
-
-          const customServers = readCustomServers(sources.home);
-          const customList = Object.entries(customServers).map(([name, cfg]) => ({
-            name,
-            source: "custom",
-            type: cfg.type || "stdio",
-            command: cfg.command || "",
-            args: Array.isArray(cfg.args) ? cfg.args : [],
-            env: cfg.env || {},
-            url: cfg.url || "",
-            fingerprint: cfg.type === "stdio"
-              ? cfg.command + " " + (cfg.args || []).join(" ")
-              : cfg.url || "",
-          }));
-
-          result.servers = [...result.servers, ...customList];
-          result.bySource.custom = customList.length;
-          result.total = result.servers.length;
-
-          if (sources.dedupeByCommand) {
-            result.servers = sources.dedupeServers(result.servers);
-            result.total = result.servers.length;
+          const body = await readBody(req);
+          if (!body.name || !body.config) {
+            writeJson(res, 400, { error: "name and config are required" });
+            return;
           }
-
-          if (source && source !== "all") {
-            result.servers = result.servers.filter((s) =>
-              s.source === source || (s.sources && s.sources.includes(source))
-            );
-            result.total = result.servers.length;
-          }
-
+          const result = upsertServer(body.name, body.config, home);
           writeJson(res, 200, result);
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
@@ -199,86 +145,65 @@ export function makeRoutes(deps) {
       },
     },
 
-    /* ── GET /config ── */
+    /* ── DELETE /registry - 删除 MCP 服务器 ── */
     {
       kind: "exact",
-      path: API.config,
+      path: API.registry,
+      handler: async (req, res) => {
+        if (req.method !== "DELETE" || !guard(req, res)) return;
+        try {
+          const url = new URL(req.url ?? "/", "http://localhost");
+          const name = query(url, "name");
+          if (!name) {
+            writeJson(res, 400, { error: "name is required" });
+            return;
+          }
+          const result = removeServer(name, home);
+          writeJson(res, 200, result);
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── POST /sync - 从各来源同步到注册表 ── */
+    {
+      kind: "exact",
+      path: API.sync,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res)) return;
+        try {
+          const scanResult = sources.scan();
+          const importResult = importServers(scanResult.servers || [], home);
+          
+          writeJson(res, 200, {
+            ok: true,
+            scanned: scanResult.servers?.length || 0,
+            imported: importResult.imported,
+            skipped: importResult.skipped,
+          });
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── GET /sources - 查看各来源配置（只读） ── */
+    {
+      kind: "exact",
+      path: API.sources,
       handler: (req, res) => {
         if (req.method !== "GET" || !guard(req, res)) return;
         try {
-          const url = new URL(req.url ?? "/", "http://localhost");
-          const source = query(url, "source");
-          const configs = {};
-
-          for (const src of ["claude", "codex", "cursor", "dsh"]) {
-            if (source && source !== "all" && source !== src) continue;
-            let configPath;
-            if (src === "codex") configPath = join(sources.home, ".codex", "config.toml");
-            else if (src === "claude") configPath = join(sources.home, ".claude", "claude_desktop_config.json");
-            else if (src === "cursor") configPath = join(sources.home, ".cursor", "mcp.json");
-            else configPath = join(sources.home, ".dsh", "mcp.json");
-
-            try {
-              configs[src] = { path: configPath, content: readFileSync(configPath, "utf8") };
-            } catch {
-              configs[src] = { path: configPath, content: null, error: "file not found" };
-            }
-          }
-
-          if (!source || source === "all" || source === "custom") {
-            const customPath = getCustomPath(sources.home);
-            try {
-              configs.custom = { path: customPath, content: readFileSync(customPath, "utf8") };
-            } catch {
-              configs.custom = { path: customPath, content: "{}" };
-            }
-          }
-
-          writeJson(res, 200, configs);
+          const result = sources.scan();
+          writeJson(res, 200, result);
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
         }
       },
     },
 
-    /* ── GET/POST/DELETE /custom ── */
-    {
-      kind: "exact",
-      path: API.custom,
-      handler: async (req, res) => {
-        if (!guard(req, res)) return;
-        try {
-          if (req.method === "GET") {
-            writeJson(res, 200, { servers: readCustomServers(sources.home) });
-          } else if (req.method === "POST") {
-            const body = await readBody(req);
-            if (!body.name || !body.config) {
-              writeJson(res, 400, { error: "name and config are required" });
-              return;
-            }
-            const servers = readCustomServers(sources.home);
-            servers[body.name] = body.config;
-            writeCustomServers(sources.home, servers);
-            writeJson(res, 200, { ok: true, name: body.name });
-          } else if (req.method === "DELETE") {
-            const url = new URL(req.url ?? "/", "http://localhost");
-            const name = query(url, "name");
-            if (!name) { writeJson(res, 400, { error: "name is required" }); return; }
-            const servers = readCustomServers(sources.home);
-            if (!(name in servers)) { writeJson(res, 404, { error: "not found" }); return; }
-            delete servers[name];
-            writeCustomServers(sources.home, servers);
-            writeJson(res, 200, { ok: true });
-          } else {
-            writeJson(res, 405, { error: "method not allowed" });
-          }
-        } catch (error) {
-          writeJson(res, 500, { error: String(error?.message || error) });
-        }
-      },
-    },
-
-    /* ── GET /connections ── */
+    /* ── GET /connections - MCP 连接状态 ── */
     {
       kind: "exact",
       path: API.connections,
@@ -294,7 +219,7 @@ export function makeRoutes(deps) {
       },
     },
 
-    /* ── POST /connect ── */
+    /* ── POST /connect - 连接到 MCP 服务器 ── */
     {
       kind: "exact",
       path: API.connect,
@@ -302,11 +227,19 @@ export function makeRoutes(deps) {
         if (req.method !== "POST" || !guard(req, res)) return;
         try {
           const body = await readBody(req);
-          if (!body.id || !body.config) {
-            writeJson(res, 400, { error: "id and config are required" });
+          if (!body.name) {
+            writeJson(res, 400, { error: "name is required" });
             return;
           }
-          const result = await clientManager.connect(body.id, body.config);
+          
+          const registry = loadRegistry(home);
+          const serverConfig = registry[body.name];
+          if (!serverConfig) {
+            writeJson(res, 404, { error: "server not found in registry" });
+            return;
+          }
+          
+          const result = await clientManager.connect(body.name, serverConfig);
           writeJson(res, 200, result);
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
@@ -314,7 +247,7 @@ export function makeRoutes(deps) {
       },
     },
 
-    /* ── POST /disconnect ── */
+    /* ── POST /disconnect - 断开连接 ── */
     {
       kind: "exact",
       path: API.disconnect,
@@ -322,8 +255,11 @@ export function makeRoutes(deps) {
         if (req.method !== "POST" || !guard(req, res)) return;
         try {
           const body = await readBody(req);
-          if (!body.id) { writeJson(res, 400, { error: "id is required" }); return; }
-          await clientManager.disconnect(body.id);
+          if (!body.name) {
+            writeJson(res, 400, { error: "name is required" });
+            return;
+          }
+          await clientManager.disconnect(body.name);
           writeJson(res, 200, { ok: true });
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
@@ -331,7 +267,7 @@ export function makeRoutes(deps) {
       },
     },
 
-    /* ── GET /tools ── */
+    /* ── GET /tools - 列出所有已发现的 MCP 工具 ── */
     {
       kind: "exact",
       path: API.tools,
@@ -346,7 +282,7 @@ export function makeRoutes(deps) {
       },
     },
 
-    /* ── POST /call ── */
+    /* ── POST /call - 调用 MCP 工具 ── */
     {
       kind: "exact",
       path: API.call,

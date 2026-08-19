@@ -1,13 +1,14 @@
 /**
  * dsh-mcp-sync - host half.
  *
- * Scans MCP configurations from Claude Code, Codex CLI, Cursor Agent,
- * and DSH's own config. Connects to MCP servers and registers their tools
- * into DSH's tool system for direct model invocation.
+ * 统一 MCP 管理：扫描各来源 → 同步到注册表 → 连接 → 注册工具
+ * 
+ * 核心理念：同步后的 MCP 是一等公民，可编辑、可删除、可直接调用。
  */
 import z from "@deepseek-ai/schemastery";
 import { McpSources } from "./sources.js";
 import { McpClientManager } from "./mcp-client.js";
+import { loadRegistry, importServers, listServers } from "./registry.js";
 import { registerMcpTools, registerMcpCallTool, registerMcpListTools } from "./mcp-tools.js";
 import { makeRoutes } from "./routes.js";
 
@@ -19,30 +20,21 @@ export const inject = ["webServer", "tools"];
 
 /** Plugin config schema. */
 export const Config = z.object({
-  /** Master switch. */
   enabled: z.boolean().default(true),
-  /** Auto sync on startup. */
   autoSync: z.boolean().default(true),
-  /** Auto connect to discovered MCP servers. */
   autoConnect: z.boolean().default(true),
-  /** Periodic sync interval (ms), 0 to disable. */
   syncInterval: z.number().step(1).min(0).default(60000),
-  /** Deduplicate by command+args. */
   dedupeByCommand: z.boolean().default(true),
-  /** Which sources to scan. */
   sources: z.object({
     claude: z.boolean().default(true),
     codex: z.boolean().default(true),
     cursor: z.boolean().default(true),
     dsh: z.boolean().default(true),
   }).default({}),
-  /** Auto-register MCP tools into DSH tool system. */
   registerTools: z.boolean().default(true),
-  /** Default tool call timeout in ms. */
   callTimeoutMs: z.number().step(1).min(1000).default(30000),
 });
 
-/** Resolve raw config with defaults. */
 function resolve(config) {
   const c = config && typeof config === "object" ? config : {};
   return {
@@ -64,17 +56,15 @@ function resolve(config) {
 
 /**
  * Mount the scanner, MCP client, tool registration, and routes.
- * @param {import("@deepseek-ai/cordis").Context} ctx - host context.
- * @param {object} [config] - plugin config.
  */
 export function apply(ctx, config) {
   const opts = resolve(config);
   if (!opts.enabled) {
-    ctx.logger.info("[mcp-sync] plugin disabled (enabled=false)");
+    ctx.logger.info("[mcp-sync] plugin disabled");
     return;
   }
 
-  ctx.logger.info("[mcp-sync] initializing | autoSync=" + opts.autoSync + " autoConnect=" + opts.autoConnect + " registerTools=" + opts.registerTools + " syncInterval=" + opts.syncInterval + "ms callTimeout=" + opts.callTimeoutMs + "ms");
+  ctx.logger.info("[mcp-sync] initializing | autoSync=" + opts.autoSync + " autoConnect=" + opts.autoConnect);
 
   const sources = new McpSources({
     home: undefined,
@@ -89,10 +79,8 @@ export function apply(ctx, config) {
 
   const engine = makeRoutes({ sources, config: opts, clientManager });
 
-  /** Tool registration disposers. */
   let toolDisposers = [];
 
-  /** Clean up registered tools. */
   function disposeTools() {
     for (const d of toolDisposers) {
       try { d(); } catch {}
@@ -101,17 +89,26 @@ export function apply(ctx, config) {
   }
 
   /**
-   * Scan sources, optionally auto-connect, and optionally register tools.
-   * @param {string} trigger - log context
+   * 同步流程：扫描来源 → 导入注册表 → 连接所有注册的服务器 → 注册工具
    */
   async function sync(trigger) {
     try {
-      const result = sources.scan();
-      const serverCount = result?.servers?.length || 0;
-      ctx.logger.info("[mcp-sync] " + trigger + " | servers=" + serverCount);
+      ctx.logger.info("[mcp-sync] " + trigger);
 
-      if (opts.autoConnect && serverCount > 0) {
-        await connectAll(result);
+      // 1. 扫描各来源
+      const scanResult = sources.scan();
+      const serverCount = scanResult?.servers?.length || 0;
+      ctx.logger.info("[mcp-sync] scanned " + serverCount + " servers from sources");
+
+      // 2. 导入到注册表（不覆盖已存在的）
+      if (serverCount > 0) {
+        const importResult = importServers(scanResult.servers || []);
+        ctx.logger.info("[mcp-sync] imported=" + importResult.imported + " skipped=" + importResult.skipped);
+      }
+
+      // 3. 连接所有注册的服务器
+      if (opts.autoConnect) {
+        await connectAll();
       }
     } catch (error) {
       ctx.logger.warn("[mcp-sync] " + trigger + " failed: " + (error?.message || error));
@@ -119,46 +116,42 @@ export function apply(ctx, config) {
   }
 
   /**
-   * Connect to all scanned MCP servers and register their tools.
-   * @param {object} scanResult - result from sources.scan()
+   * 连接注册表中的所有服务器并注册工具
    */
-  async function connectAll(scanResult) {
-    if (!scanResult?.servers || scanResult.servers.length === 0) {
-      ctx.logger.info("[mcp-sync] no MCP servers found to connect");
+  async function connectAll() {
+    const registry = loadRegistry();
+    const serverNames = Object.keys(registry);
+    
+    if (serverNames.length === 0) {
+      ctx.logger.info("[mcp-sync] no servers in registry");
       return;
     }
 
-    ctx.logger.info("[mcp-sync] found " + scanResult.servers.length + " MCP servers, connecting...");
+    ctx.logger.info("[mcp-sync] connecting " + serverNames.length + " servers...");
 
-    // Build server config map from scan result
-    const serverConfigs = new Map();
-    for (const server of scanResult.servers) {
-      const sources = server.sources || [server.source];
-      const serverId = sources.join("_") + "_" + server.name.replace(/[^a-zA-Z0-9_-]/g, "_");
-      if (!serverConfigs.has(serverId)) {
-        serverConfigs.set(serverId, { ...server, id: serverId });
-      }
-    }
-
-    // Connect to each server
     let connectedCount = 0;
-    for (const [id, serverCfg] of serverConfigs) {
+    for (const name of serverNames) {
+      const serverConfig = registry[name];
+      
+      // Skip disabled servers
+      if (serverConfig.enabled === false) continue;
+      
       try {
-        const result = await clientManager.connect(id, serverCfg);
+        const result = await clientManager.connect(name, serverConfig);
         if (result.ok) {
           connectedCount++;
-          ctx.logger.info("[mcp-sync] connected " + id + " | tools=" + result.tools.length);
+          ctx.logger.info("[mcp-sync] connected " + name + " | tools=" + result.tools.length);
         } else {
-          ctx.logger.warn("[mcp-sync] connect failed " + id + ": " + (result.error || "unknown"));
+          ctx.logger.warn("[mcp-sync] connect failed " + name + ": " + (result.error || "unknown"));
         }
       } catch (error) {
-        ctx.logger.warn("[mcp-sync] connect exception " + id + ": " + (error?.message || error));
+        ctx.logger.warn("[mcp-sync] connect exception " + name + ": " + (error?.message || error));
       }
     }
 
-    ctx.logger.info("[mcp-sync] connected " + connectedCount + "/" + serverConfigs.size + " servers");
+    ctx.logger.info("[mcp-sync] connected " + connectedCount + "/" + serverNames.length + " servers");
 
-    // Register tools if enabled
+    // 注册工具到 DSH
     if (opts.registerTools && connectedCount > 0) {
       disposeTools();
       try {
@@ -176,7 +169,7 @@ export function apply(ctx, config) {
   ctx.effect(() => {
     // Initial sync
     if (opts.autoSync) {
-      setTimeout(() => void sync("initial scan"), 200);
+      setTimeout(() => void sync("initial sync"), 200);
     }
 
     // Periodic sync
@@ -198,32 +191,35 @@ export function apply(ctx, config) {
     };
   }, "dsh-mcp-sync: routes & tools");
 
-  // Expose clientManager for harness.handle RPC from client
+  // Expose RPC handles for client
   ctx.effect(() => {
     const d1 = ctx.harness.handle("mcp-sync:status", async () => {
       return {
-        sources: sources.status(),
+        registry: listServers(),
         connections: clientManager.getStatus(),
         servers: clientManager.listServers(),
       };
     });
 
-    const d2 = ctx.harness.handle("mcp-sync:connect", async (args) => {
-      const { id, config: serverConfig } = args;
-      return await clientManager.connect(id, serverConfig);
-    });
-
-    const d3 = ctx.harness.handle("mcp-sync:disconnect", async (args) => {
-      await clientManager.disconnect(args.id);
+    const d2 = ctx.harness.handle("mcp-sync:sync", async () => {
+      await sync("manual sync");
       return { ok: true };
     });
 
-    const d4 = ctx.harness.handle("mcp-sync:callTool", async (args) => {
-      return await clientManager.callTool(args.server, args.tool, args.args || {});
+    const d3 = ctx.harness.handle("mcp-sync:connect", async (args) => {
+      const registry = loadRegistry();
+      const serverConfig = registry[args.name];
+      if (!serverConfig) return { ok: false, error: "not found" };
+      return await clientManager.connect(args.name, serverConfig);
     });
 
-    const d5 = ctx.harness.handle("mcp-sync:listTools", async () => {
-      return clientManager.listServers();
+    const d4 = ctx.harness.handle("mcp-sync:disconnect", async (args) => {
+      await clientManager.disconnect(args.name);
+      return { ok: true };
+    });
+
+    const d5 = ctx.harness.handle("mcp-sync:callTool", async (args) => {
+      return await clientManager.callTool(args.server, args.tool, args.args || {});
     });
 
     return () => { d1(); d2(); d3(); d4(); d5(); };
