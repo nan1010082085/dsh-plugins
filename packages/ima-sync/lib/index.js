@@ -26,10 +26,6 @@ const inject = ["webServer"];
 const Config = z.object({
   /** 总开关。false 时插件完全不注册监听。 */
   enabled: z.boolean().default(true),
-  /** 每轮对话结束（turn/end）时上传一条进度记录。 */
-  triggerOnTurnEnd: z.boolean().default(true),
-  /** 会话销毁（agent/disposed）时上传一条会话总结。 */
-  triggerOnSessionEnd: z.boolean().default(true),
   /** 笔记模式：project+date 按项目+日期分笔记，daily 按日期合并所有项目。 */
   mode: z.union([z.const("project+date"), z.const("daily")]).default("project+date"),
   /** IMA OpenAPI Client ID。留空依次回退：环境变量 -> ~/.config/ima/client_id。 */
@@ -95,8 +91,6 @@ function resolveConfig(config) {
   
   return {
     enabled: base.enabled ?? true,
-    triggerOnTurnEnd: base.triggerOnTurnEnd ?? true,
-    triggerOnSessionEnd: base.triggerOnSessionEnd ?? true,
     mode: base.mode || "project+date",
     clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
     apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
@@ -361,80 +355,14 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
 
 /* ───────────────────────── 进度记录构建 ───────────────────────── */
 
-/** 单轮进度记录。 */
+/** 单轮进度记录（简洁格式，与本地 ima-upload 一致）。 */
 function buildTurnRecord(state, reason, cfg) {
   const prompt = truncate(state.prompt || "（无用户输入）", cfg.maxPromptLength);
-  const tools = summarizeTools(state.tools);
-  const todos = renderTodos(state.todos);
-  const reply = truncate(state.lastAssistant || "（无回复）", cfg.maxDetailLength);
-  const reasonNote = reason && reason !== "success" ? `（结束原因：${reason}）` : "";
-  const task = `轮次 #${state.turn}${reasonNote}：${oneLine(prompt).slice(0, 40)}`;
-  const summary = `第 ${state.turn} 轮对话完成。工具调用：${tools}。任务进度：${oneLine(todos.split("\n")[0])}。`;
-  const detail = [
-    `### 轮次 #${state.turn} — ${localDate()} ${localTime()}${reasonNote}`,
-    "",
-    `**用户**：${prompt}`,
-    "",
-    `**工具调用**：${tools}`,
-    "",
-    `**任务列表**：`,
-    todos,
-    "",
-    `**回复摘要**：`,
-    reply,
-  ].join("\n");
-  return { task, summary, detail };
+  const task = oneLine(prompt).slice(0, 60) || `轮次 #${state.turn}`;
+  const summary = truncate(state.lastAssistant || "（无回复）", cfg.maxDetailLength);
+  return { task, summary, detail: "" };
 }
 
-/** 会话总结（手动 /ima-upload 与会话结束时使用）。 */
-function buildSessionDigest(session, cfg) {
-  const turns = [];
-  let current = null;
-  for (const ev of session.events) {
-    switch (ev.type) {
-      case "turn/start":
-        current = { turn: ev.data.turn, prompt: "", tools: new Map(), reply: "", reason: "" };
-        turns.push(current);
-        break;
-      case "user/message":
-        if (current && ev.data.source?.kind === "user" && !current.prompt) current.prompt = messageText(ev.data);
-        break;
-      case "tool/call":
-        if (current && ev.data.turn === current.turn) bump(current.tools, ev.data.name);
-        break;
-      case "assistant/message":
-        if (current && ev.data.turn === current.turn) current.reply = messageText(ev.data.message);
-        break;
-      case "turn/end":
-        if (current && ev.data.turn === current.turn) current.reason = ev.data.reason;
-        break;
-    }
-  }
-  const sections = turns.map((t) => {
-    const prompt = truncate(t.prompt || "（无用户输入）", cfg.maxPromptLength);
-    const reply = truncate(t.reply || "（无回复）", cfg.maxDetailLength);
-    const reasonNote = t.reason && t.reason !== "success" ? `（${t.reason}）` : "";
-    return [
-      `### 轮次 #${t.turn}${reasonNote}`,
-      "",
-      `**用户**：${prompt}`,
-      "",
-      `**工具调用**：${summarizeTools(t.tools)}`,
-      "",
-      `**回复摘要**：`,
-      reply,
-      "",
-      "---",
-    ].join("\n");
-  });
-  const totalTools = turns.reduce((acc, t) => acc + [...t.tools.values()].reduce((a, b) => a + b, 0), 0);
-  const task = `会话总结（共 ${turns.length} 轮）`;
-  const summary = `对话结束，共 ${turns.length} 轮，工具调用合计 ${totalTools} 次。`;
-  const detail = turns.length === 0
-    ? "（会话无已完成轮次）"
-    : ["## 会话进度摘要", "", ...sections].join("\n");
-  return { task, summary, detail };
-}
 
 
 /* ───────────────────────── Web API 路由 ───────────────────────── */
@@ -509,7 +437,7 @@ function apply(ctx, config) {
     return;
   }
 
-  ctx.logger.info(`[ima-sync] 初始化 | mode=${cfg.mode} | triggerOnTurnEnd=${cfg.triggerOnTurnEnd} | triggerOnSessionEnd=${cfg.triggerOnSessionEnd} | workKbId=${cfg.workKbId ? "***" : "未设置"} | workKbName=${cfg.workKbName || "未设置"}`);
+  ctx.logger.info(`[ima-sync] 初始化 | mode=${cfg.mode} | workKbId=${cfg.workKbId ? "***" : "未设置"} | workKbName=${cfg.workKbName || "未设置"}`);
 
   const log = (message) => ctx.logger.info(`[ima-sync] ${message}`);
   const warn = (message) => ctx.logger.warn(`[ima-sync] ${message}`);
@@ -621,7 +549,7 @@ function apply(ctx, config) {
           break;
         }
         case "turn/end": {
-          if (cfg.triggerOnTurnEnd && !state.uploaded.has(event.data.turn)) {
+          if (!state.uploaded.has(event.data.turn)) {
             state.uploaded.add(event.data.turn);
             const record = buildTurnRecord(state, event.data.reason, cfg);
             enqueue(session.id, () => uploadRecord(session, record));
@@ -631,18 +559,6 @@ function apply(ctx, config) {
       }
     } catch (err) {
       warn(`处理会话事件出错：${err.message}`);
-    }
-  });
-
-  ctx.on("agent/disposed", ({ agent }) => {
-    try {
-      if (!cfg.triggerOnSessionEnd) return;
-      const session = agent?.session;
-      if (!session || !isTopLevel(session)) return;
-      const record = buildSessionDigest(session, cfg);
-      enqueue(session.id, () => uploadRecord(session, record));
-    } catch (err) {
-      warn(`会话结束上传出错：${err.message}`);
     }
   });
 
@@ -686,8 +602,6 @@ function apply(ctx, config) {
           const merged = { ...cfg, ...saved };
           const safeConfig = {
             enabled: merged.enabled ?? true,
-            triggerOnTurnEnd: merged.triggerOnTurnEnd ?? true,
-            triggerOnSessionEnd: merged.triggerOnSessionEnd ?? true,
             mode: merged.mode || "project+date",
             clientId: merged.clientId ? "***" : "",
             apiKey: merged.apiKey ? "***" : "",
