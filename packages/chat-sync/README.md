@@ -1,82 +1,112 @@
 # dsh-chat-sync
 
-DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor Agent 的历史与进行中的对话同步进 DSH Web GUI**，集成到侧边栏「对话同步」标签页，按来源分组浏览 + 动态同步。
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
+[![npm](https://img.shields.io/badge/npm-dsh--chat--sync-green?logo=npm)](https://www.npmjs.com/package/dsh-chat-sync)
+
+DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor Agent 的对话自动导入为真正的 DSH 会话**，可在 DSH 侧边栏继续对话。
 
 ## 功能
 
 | 能力 | 说明 |
 | --- | --- |
-| 三源分组 | 侧边栏按 Claude Code / Codex CLI / Cursor Agent 三个目录分组显示，每个目录可展开/折叠 |
-| 会话回放 | 点开任意会话查看完整消息流：用户输入、助手回复（含模型名）、工具调用胶囊、工具结果、system 事件 |
-| 动态同步 | 三个数据根目录 `fs.watch`（递归）→ 去抖扫描 → **SSE 推送到浏览器**：列表自动刷新，无需手动刷新 |
-| 活跃标记 | 最近有写入的会话带绿色脉动点（「活跃」按钮可一键只看活跃会话） |
-| 隐私围栏 | 所有 API 仅接受 loopback 请求（socket + Host + same-origin 三重校验），不向局域网暴露任何对话内容 |
-
-只读设计：插件**只读取**本地会话文件，绝不写入 / 修改任何 Claude、Codex、Cursor 的数据。
+| **自动导入** | 发现新对话自动创建 DSH 会话，注入完整对话历史作为上下文 |
+| **工作区匹配** | 按源对话的项目路径自动匹配或创建 DSH 工作区 |
+| **继续对话** | 导入后的会话是真正的 DSH 会话，可在侧边栏继续提问 |
+| 三源分组 | 侧边栏按 Claude Code / Codex CLI / Cursor Agent 分组显示 |
+| 动态同步 | fs.watch 递归监听 + SSE 推送，列表自动刷新 |
+| 隐私围栏 | 所有 API 仅接受 loopback 请求 |
 
 ## 数据源
 
-| 源 | 路径 | 标题来源 |
-| --- | --- | --- |
-| Claude Code | `~/.claude/projects/<项目>/<sessionId>.jsonl` | `ai-title` / `summary` 行，回退首条真实用户消息 |
-| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` | `~/.codex/session_index.jsonl` 的 thread name，回退首条用户消息 |
-| Cursor Agent | `~/.cursor/projects/<项目>/agent-transcripts/<uuid>/<uuid>.jsonl` | Cursor `conversation-search.db`（node:sqlite 只读，不可用时自动回退），回退首条 `<user_query>` |
-
-> 边界：Cursor 侧只收录 **Agent transcripts**（`agent-transcripts` 目录，即 Cursor Agent / 后台 Agent 会话）；旧版 Composer 聊天（state.vscdb 二进制 blob）不在范围内。
+| 源 | 路径 |
+| --- | --- |
+| Claude Code | `~/.claude/projects/<项目>/<sessionId>.jsonl` |
+| Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
+| Cursor Agent | `~/.cursor/projects/<项目>/agent-transcripts/<uuid>/<uuid>.jsonl` |
 
 ## 工作原理
 
-- **服务端半**（`lib/index.js` → `lib/sources.js` + `lib/routes.js`）：扫描三源 jsonl，按 `(mtime, size)` 缓存会话元数据；`GET /api/dsh-chat-sync/*` 提供状态 / 列表 / 消息三个只读接口 + `/events` SSE 流。消息读取按**字节偏移增量**：会话文件是 append-only JSONL，解析结果与 `next` 偏移一并返回，客户端带 `from=<next>` 续读，只传新增消息。
-- **动态同步**：三个数据根目录递归 `fs.watch` → 400ms 去抖重扫 → diff 出变化会话 → SSE `changed` 帧广播。不支持递归 watch 的平台自动退化为轮询（`pollFallbackMs`）。
-- **浏览器半**（`lib/client.js`，零构建手写 ModuleLoader 工厂）：注册为 `dsh-better-sidebar` 的标签页，与文件、Git 标签并列显示。按来源分组展示会话树，点击会话查看详情。
+### 自动导入流程
+
+1. **扫描**：定期扫描三个数据源目录，发现新的对话文件
+2. **匹配工作区**：根据源对话的 `cwd`（工作目录）查找匹配的 DSH 工作区
+   - 匹配到 → 直接使用
+   - 未匹配 → 自动创建新工作区目录
+3. **创建会话**：通过 DSH API 创建新会话，挂载到对应工作区
+4. **注入上下文**：将源对话的完整历史格式化为上下文消息，作为第一个 user message 注入
+5. **命名**：会话标题格式为 `[来源] 原始标题`（如 `[Claude] 修复登录bug`）
+
+### 状态追踪
+
+已导入的会话记录在 `.chat-sync/imported.json`，避免重复导入。只导入最近 24 小时内有更新的会话。
 
 ## 安装
 
+### 从 GitHub 安装（推荐）
+
 ```sh
-# 使用 dsh plugin 安装（推荐）
+# 公开仓库，直接安装
+dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/chat-sync
+
+# 重启 dsh web 生效
+```
+
+### 从 npm 安装
+
+```sh
+# 使用 dsh plugin 安装
 dsh plugin --profile web add dsh-chat-sync
 
 # 重启 dsh web 生效
 ```
 
-`dsh plugin` 会自动把声明了 `dsh.bundle` 的包追加进 profile 的 `dsh.profile.bundles`。
-
-### 依赖
-
-需要安装 `dsh-better-sidebar` 插件（提供侧边栏标签页系统）。
-
 ## 配置
 
-默认零配置可用。需要调整时，在 profile 的 `cordis.patch.yml`（`~/.dsh/profiles/web/cordis.patch.yml`）按 id 覆盖：
+在 profile 的 `cordis.patch.yml`（`~/.dsh/profiles/web/cordis.patch.yml`）按 id 覆盖：
 
 ```yaml
 - id: chat-sync
   config:
     enabled: true
-    watch: true            # 动态同步（文件监听 + SSE 推送）
-    pollFallbackMs: 5000   # 递归 watch 不可用时的轮询间隔（0 关闭）
-    debounceMs: 400        # 文件事件去抖窗口
-    maxSessions: 500       # 会话列表上限
-    maxMessageChars: 8000  # 单条消息截断长度
-    recentLiveMs: 180000   # 「活跃」判定窗口
-    titleHeadBytes: 65536  # 新文件标题提取读取的头部字节数
+    # 浏览功能
+    watch: true                    # 动态同步
+    syncToWorkspace: true          # 文件复制到 .chat-sync 目录
+    # 自动导入
+    autoImport: true               # 自动导入为 DSH 会话
+    autoImportIntervalMs: 60000    # 扫描间隔（毫秒）
+    maxImportChars: 50000          # 导入上下文最大字符数
+    # 高级
+    maxSessions: 500               # 会话列表上限
+    maxMessageChars: 8000          # 单条消息截断长度
+    recentLiveMs: 180000           # 「活跃」判定窗口
 ```
+
+### 配置项说明
+
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `enabled` | `true` | 插件总开关 |
+| `watch` | `true` | 文件监听 + SSE 推送 |
+| `syncToWorkspace` | `true` | 文件复制到 .chat-sync 目录 |
+| `autoImport` | `true` | 自动导入为 DSH 会话 |
+| `autoImportIntervalMs` | `60000` | 自动导入扫描间隔 |
+| `maxImportChars` | `50000` | 导入上下文最大字符数 |
 
 ## API（均 loopback-only）
 
 | 路由 | 说明 |
 | --- | --- |
 | `GET /api/dsh-chat-sync/status` | 各源可用性 / 会话数 / 同步模式 |
-| `GET /api/dsh-chat-sync/sessions?source=&q=&limit=&offset=&live=1` | 过滤后的会话列表 |
-| `GET /api/dsh-chat-sync/session?id=<source:uuid>&from=<next>` | 消息流（增量） |
-| `GET /api/dsh-chat-sync/events` | SSE：`hello` / `changed` 帧 |
+| `GET /api/dsh-chat-sync/sessions` | 过滤后的会话列表 |
+| `GET /api/dsh-chat-sync/session?id=<source:uuid>` | 消息流（增量） |
+| `GET /api/dsh-chat-sync/events` | SSE 实时更新 |
 
 ## 开发与测试
 
 ```sh
-node --check lib/index.js lib/sources.js lib/routes.js lib/client.js
-node tests/smoke.mjs         # 端到端：假 home + 真 HTTP + SSE 动态推送
-node tests/client-load.mjs   # 浏览器半：ModuleLoader 契约 + apply 冒烟
+node --check lib/index.js lib/sources.js lib/routes.js lib/client.js lib/auto-import.js
+node tests/smoke.mjs         # 端到端测试
+node tests/client-load.mjs   # 客户端加载测试
 ```
 
 ## License

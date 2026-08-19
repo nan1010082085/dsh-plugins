@@ -1,5 +1,8 @@
 # dsh-plugin-ima-sync
 
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
+[![npm](https://img.shields.io/badge/npm-dsh--plugin--ima--sync-green?logo=npm)](https://www.npmjs.com/package/dsh-plugin-ima-sync)
+
 DSH（DeepSeek Harness）插件：**把 DSH 的对话进度自动上传到腾讯 IMA**（ima 笔记 + Work 知识库）。
 
 灵感与行为对齐 Claude Code 的 ima 工作流：每轮对话结束自动生成一条进度记录，按天聚合到 `[项目名] YYYY-MM-DD` 笔记，可关联 IMA Work 知识库。
@@ -22,6 +25,17 @@ DSH（DeepSeek Harness）插件：**把 DSH 的对话进度自动上传到腾讯
 - **上传通道**：优先调用本机 `~/.local/bin/ima-upload` 脚本（复用项目映射 `~/.config/ima/projects.json` 与每日笔记缓存 `~/.cache/ima/daily-notes`）；脚本不存在时自动退化为直接调用 IMA OpenAPI（`list_note` → `import_doc`/`append_doc` → `add_knowledge`），行为一致
 
 ## 安装
+
+### 从 GitHub 安装（推荐）
+
+```sh
+# 公开仓库，直接安装
+dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/ima-sync
+
+# 重启 dsh web 生效
+```
+
+### 从 npm 安装
 
 ```sh
 # 使用 dsh plugin 安装（推荐）

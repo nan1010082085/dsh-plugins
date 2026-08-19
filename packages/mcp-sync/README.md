@@ -1,5 +1,8 @@
 # dsh-mcp-sync
 
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
+[![npm](https://img.shields.io/badge/npm-dsh--mcp--sync-green?logo=npm)](https://www.npmjs.com/package/dsh-mcp-sync)
+
 DSH（DeepSeek Harness）插件：**连接 MCP 服务器、发现工具并注册到 DSH 工具系统**，让模型可以直接调用 MCP 工具。
 
 ## 功能
@@ -23,6 +26,17 @@ DSH（DeepSeek Harness）插件：**连接 MCP 服务器、发现工具并注册
 4. **注册**: 将每个 MCP 工具注册为 DSH 工具，模型可直接调用
 
 ## 安装
+
+### 从 GitHub 安装（推荐）
+
+```sh
+# 公开仓库，直接安装
+dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/mcp-sync
+
+# 重启 dsh web 生效
+```
+
+### 从 npm 安装
 
 ```sh
 # 使用 dsh plugin 安装（推荐）

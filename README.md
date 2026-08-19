@@ -1,5 +1,8 @@
 # dsh-plugins
 
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 DSH(DeepSeek Harness)插件 monorepo。每个包是一个独立可安装的 dsh 插件,经 `dsh plugin` 装进 profile。
 
 ## Packages
@@ -12,16 +15,22 @@ DSH(DeepSeek Harness)插件 monorepo。每个包是一个独立可安装的 dsh 
 
 ## 安装(任一包)
 
+### 从 GitHub 安装(推荐)
+
+```sh
+# 公开仓库,直接安装
+dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/chat-sync
+dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/ima-sync
+dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/mcp-sync
+```
+
+### 本地开发安装
+
 ```sh
 # 本地 link 安装(改源码重启 dsh web 即生效)
 dsh plugin --profile web add link:$(pwd)/packages/chat-sync
 dsh plugin --profile web add link:$(pwd)/packages/ima-sync
 dsh plugin --profile web add link:$(pwd)/packages/mcp-sync
-
-# 或从 GitHub 单包安装
-dsh plugin --profile web add github:nan1010082085/dsh-chat-sync
-dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
-dsh plugin --profile web add github:nan1010082085/dsh-mcp-sync
 ```
 
 ## 开发
