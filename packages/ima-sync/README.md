@@ -55,11 +55,12 @@ dsh plugin --profile web add dsh-plugin-ima-sync
     enabled: true
     clientId: <your-ima-openapi-client-id>
     apiKey: <your-ima-openapi-api-key>
-    workKbId: <your-ima-work-knowledge-base-id>   # 全局默认知识库 ID
-    # 项目级别的知识库映射（可选）
+    workKbName: "我的知识库"   # 推荐：使用知识库名称（用户可见）
+    # workKbId: <your-ima-work-knowledge-base-id>   # 或者使用知识库 ID
+    # 项目级别的知识库映射（可选，支持名称或 ID）
     # projectKnowledgeBases:
-    #   my-project: <project-specific-kb-id>
-    #   another-project: <another-kb-id>
+    #   my-project: "项目知识库"   # 按名称
+    #   another-project: <project-specific-kb-id>   # 按 ID
     # triggerOnTurnEnd: true
     # triggerOnSessionEnd: true
     # imaUploadBin: ''        # 默认 ~/.local/bin/ima-upload；留空且脚本不存在时走直接 API
@@ -77,7 +78,7 @@ dsh plugin --profile web add dsh-plugin-ima-sync
     manualOverride:
       clientId: <your-ima-openapi-client-id>
       apiKey: <your-ima-openapi-api-key>
-      workKbId: <your-ima-work-knowledge-base-id>
+      workKbName: "我的知识库"
 ```
 
 3. **环境变量**：`IMA_OPENAPI_CLIENTID` / `IMA_OPENAPI_APIKEY`
@@ -96,8 +97,9 @@ dsh plugin --profile web add dsh-plugin-ima-sync
 | `triggerOnSessionEnd` | `true` | 会话销毁时上传总结 |
 | `mode` | `project+date` | 笔记模式：`project+date`（按项目+日期分笔记）或 `daily`（每日日报，所有项目合并） |
 | `clientId` / `apiKey` | 空（读环境变量/本地文件） | IMA OpenAPI 凭证 |
-| `workKbId` | 空 | IMA Work 知识库 ID（全局默认），留空不关联知识库 |
-| `projectKnowledgeBases` | 空对象 | 项目级别的知识库映射，key 为项目名，value 为知识库 ID |
+| `workKbName` | 空 | IMA Work 知识库名称（推荐），自动查询对应 ID |
+| `workKbId` | 空 | IMA Work 知识库 ID（备选），留空不关联知识库 |
+| `projectKnowledgeBases` | 空对象 | 项目级别的知识库映射，key 为项目名，value 为知识库名称或 ID |
 | `manualOverride` | 空对象 | 手动配置覆盖，设置后优先使用，忽略环境变量和本地文件 |
 | `imaUploadBin` | `~/.local/bin/ima-upload` | 本机上传脚本路径 |
 | `projectsFile` | `~/.config/ima/projects.json` | 项目名映射文件 |

@@ -14,9 +14,9 @@
  * 零副作用设计：所有上传均 fire-and-forget 且串行排队，失败只记日志，不阻塞会话。
  */
 import z from "@deepseek-ai/schemastery";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -41,10 +41,13 @@ const Config = z.object({
     clientId: z.string().default(""),
     apiKey: z.string().default(""),
     workKbId: z.string().default(""),
+    workKbName: z.string().default(""),
   }).default({}),
   /** IMA Work 知识库 ID（全局默认）。留空则只创建/追加笔记，不关联知识库。 */
   workKbId: z.string().default(""),
-  /** 项目级别的知识库映射。key 为项目名，value 为知识库 ID。 */
+  /** IMA Work 知识库名称（全局默认）。配置后自动查询对应 ID，优先级高于 workKbId。 */
+  workKbName: z.string().default(""),
+  /** 项目级别的知识库映射。key 为项目名，value 为知识库 ID 或名称。 */
   projectKnowledgeBases: z.dict(z.string()).default({}),
   /** 本机 ima-upload 脚本路径。留空默认 ~/.local/bin/ima-upload；脚本不存在时走直接 API。 */
   imaUploadBin: z.string().default(""),
@@ -101,8 +104,9 @@ function resolveConfig(config) {
   };
 }
 
-/** 最长路径前缀匹配 cwd -> 项目名（与 ~/.local/bin/ima-upload 的 lookup_project 一致）。 */
+/** 最长路径前缀匹配 cwd -> 项目名。优先 projects.json 手动映射，其次自动检测。 */
 function resolveProjectName(cwd, projectsFile, fallback) {
+  // 1. 尝试 projects.json 手动映射
   try {
     const map = JSON.parse(readFileSync(projectsFile, "utf8"));
     const matched = Object.entries(map)
@@ -110,19 +114,125 @@ function resolveProjectName(cwd, projectsFile, fallback) {
       .sort((a, b) => b[0].length - a[0].length);
     if (matched.length > 0) return matched[0][1];
   } catch {
-    /* 映射文件缺失/损坏时走兜底 */
+    /* 映射文件缺失/损坏时跳过 */
   }
+
+  // 2. 自动检测：从 Claude 会话目录反推项目名
+  if (cwd) {
+    const claudeProject = detectProjectFromClaude(cwd);
+    if (claudeProject) return claudeProject;
+  }
+
+  // 3. 兜底：目录名
   return fallback || (cwd ? path.basename(cwd) : "DSH");
 }
 
+/** 从 Claude 会话目录自动检测项目名。
+ *  Claude 项目目录格式：`~/.claude/projects/<encoded-path>/`
+ *  encoded-path = cwd 的绝对路径，把 `/` 替换为 `-`（前导 `-` 保留）。
+ *  反向匹配：把 cwd 编码后直接查找对应目录。
+ */
+function detectProjectFromClaude(cwd) {
+  try {
+    const claudeProjectsDir = path.join(HOME, ".claude", "projects");
+    if (!existsSync(claudeProjectsDir)) return null;
 
-/** 获取项目对应的知识库 ID（优先使用项目级配置，否则使用全局配置）。 */
-function getWorkKbIdForProject(project, cfg) {
+    // 精确匹配：cwd 编码后直接查找
+    const encoded = cwd.replace(/\//g, "-");
+    if (existsSync(path.join(claudeProjectsDir, encoded))) {
+      return path.basename(cwd).split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    }
+
+    // 前缀匹配：遍历所有项目目录，找最长匹配
+    const entries = readdirSync(claudeProjectsDir, { withFileTypes: true });
+    const candidates = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      // 解码目录名 -> 原始路径
+      const decoded = "/" + entry.name.replace(/^-/, "").replace(/-/g, "/");
+      // 验证解码后的路径是否存在（排除误匹配）
+      if (!existsSync(decoded)) continue;
+      if (cwd === decoded || cwd.startsWith(decoded + "/")) {
+        candidates.push({ decoded, name: path.basename(decoded) });
+      }
+    }
+    candidates.sort((a, b) => b.decoded.length - a.decoded.length);
+    if (candidates.length > 0) {
+      const raw = candidates[0].name;
+      return raw.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    }
+  } catch {
+    /* 目录不可读时跳过 */
+  }
+  return null;
+}
+
+
+/** 调用 IMA API 查询知识库列表，返回 { name -> id } 映射。 */
+async function fetchKnowledgeBaseMap(creds) {
+  const BASE_URL = "https://ima.qq.com";
+  const map = {};
+  let cursor = "";
+
+  try {
+    while (true) {
+      const res = await new Promise((resolve, reject) => {
+        const url = `${BASE_URL}/openapi/wiki/v1/get_addable_knowledge_base_list`;
+        const body = JSON.stringify({ cursor, limit: 50 });
+        const curl = spawn("curl", [
+          "-s", "-X", "POST", url,
+          "-H", "Content-Type: application/json",
+          "-H", `X-Ima-Clientid: ${creds.clientId}`,
+          "-H", `X-Ima-Apikey: ${creds.apiKey}`,
+          "-d", body,
+        ]);
+        let stdout = "";
+        let stderr = "";
+        curl.stdout.on("data", (chunk) => { stdout += chunk; });
+        curl.stderr.on("data", (chunk) => { stderr += chunk; });
+        curl.on("close", (code) => {
+          if (code !== 0) return reject(new Error(`curl exit ${code}: ${stderr}`));
+          try { resolve(JSON.parse(stdout)); } catch { reject(new Error(`JSON parse error: ${stdout}`)); }
+        });
+      });
+
+      if (res.code !== 0) {
+        console.warn(`[ima-sync] 查询知识库列表失败: ${res.msg || res.code}`);
+        break;
+      }
+
+      const list = res.data?.list || [];
+      for (const kb of list) {
+        if (kb.name && kb.knowledge_base_id) {
+          map[kb.name] = kb.knowledge_base_id;
+        }
+      }
+
+      if (!res.data?.has_more || !list.length) break;
+      cursor = res.data.cursor || "";
+    }
+  } catch (err) {
+    console.warn(`[ima-sync] 查询知识库列表异常: ${err.message}`);
+  }
+
+  return map;
+}
+
+
+/** 获取项目对应的知识库 ID（优先使用项目级配置，否则使用全局配置）。支持按名称查找。 */
+function getWorkKbIdForProject(project, cfg, kbNameMap) {
   // 优先使用项目级别的知识库映射
   if (cfg.projectKnowledgeBases && cfg.projectKnowledgeBases[project]) {
-    return cfg.projectKnowledgeBases[project];
+    const val = cfg.projectKnowledgeBases[project];
+    // 如果是 ID（纯数字或包含特殊字符），直接返回
+    if (/^\d+$/.test(val) || val.includes("-")) return val;
+    // 否则按名称查找
+    return kbNameMap[val] || val;
   }
-  // 否则使用全局配置
+  // 否则使用全局配置（优先使用 workKbName）
+  if (cfg.workKbName && kbNameMap[cfg.workKbName]) {
+    return kbNameMap[cfg.workKbName];
+  }
   return cfg.workKbId;
 }
 
@@ -462,7 +572,7 @@ async function readBody(req) {
 function apply(ctx, config) {
   const cfg = resolveConfig(config);
   if (!cfg.enabled) {
-    ctx.logger.info("[ima-sync] 插件已禁用（enabled=false）");
+    console.log("[ima-sync] 插件已禁用");
     return;
   }
 
@@ -471,10 +581,21 @@ function apply(ctx, config) {
     return;
   }
 
-  ctx.logger.info(`[ima-sync] 初始化 | mode=${cfg.mode} | triggerOnTurnEnd=${cfg.triggerOnTurnEnd} | triggerOnSessionEnd=${cfg.triggerOnSessionEnd} | workKbId=${cfg.workKbId ? "***" : "未设置"}`);
+  ctx.logger.info(`[ima-sync] 初始化 | mode=${cfg.mode} | triggerOnTurnEnd=${cfg.triggerOnTurnEnd} | triggerOnSessionEnd=${cfg.triggerOnSessionEnd} | workKbId=${cfg.workKbId ? "***" : "未设置"} | workKbName=${cfg.workKbName || "未设置"}`);
 
   const log = (message) => ctx.logger.info(`[ima-sync] ${message}`);
   const warn = (message) => ctx.logger.warn(`[ima-sync] ${message}`);
+
+  /** 知识库名称 -> ID 映射（异步加载）。 */
+  let kbNameMap = {};
+  const kbNameMapReady = (async () => {
+    if (!cfg.workKbName && !Object.keys(cfg.projectKnowledgeBases).some(k => !/^\d+$/.test(cfg.projectKnowledgeBases[k]) && !cfg.projectKnowledgeBases[k].includes("-"))) {
+      return; // 没有按名称配置，不需要查询
+    }
+    const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
+    kbNameMap = await fetchKnowledgeBaseMap(creds);
+    log(`已加载知识库映射：${Object.keys(kbNameMap).length} 个`);
+  })();
 
   /** 每个会话的上传队列（串行，避免并发写同一篇笔记）。 */
   const queues = new Map();
@@ -490,8 +611,9 @@ function apply(ctx, config) {
 
   /** 统一的「构建记录 -> 上传」入口。 */
   const uploadRecord = (session, record) => {
-    const cwd = session?.header?.cwd || process.cwd();
+    const cwd = session?.header?.cwd || session?.cwd || process.cwd();
     const project = resolveProjectName(cwd, cfg.projectsFile, cfg.defaultProject);
+    console.log(`[ima-sync] 上传 | session=${session?.id?.slice(0,8)} | cwd=${cwd} | project=${project} | mode=${cfg.mode} | task=${record.task?.slice(0,40)}`);
     return (async () => {
       if (cfg.imaUploadBin && existsSync(cfg.imaUploadBin)) {
         await runImaUpload(cfg.imaUploadBin, ["-t", record.task, "-s", record.summary, "-d", record.detail], cwd, cfg.timeoutMs);
@@ -500,6 +622,9 @@ function apply(ctx, config) {
       }
       const date = localDate();
       const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
+      // 等待知识库映射加载完成
+      await kbNameMapReady;
+      const workKbId = getWorkKbIdForProject(project, cfg, kbNameMap);
       const res = await uploadDirect({
         creds,
         project,
@@ -507,7 +632,7 @@ function apply(ctx, config) {
         summary: record.summary,
         detail: record.detail,
         cacheDir: cfg.cacheDir,
-        workKbId: cfg.workKbId,
+        workKbId,
         projectKnowledgeBases: cfg.projectKnowledgeBases,
         date,
         mode: cfg.mode,
