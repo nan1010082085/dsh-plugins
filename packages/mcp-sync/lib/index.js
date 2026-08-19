@@ -16,7 +16,7 @@ import { makeRoutes } from "./routes.js";
 export const name = "mcp-sync";
 
 /** Requires webServer for routes and tools for tool registration. */
-export const inject = ["webServer", "tools", "harness"];
+export const inject = ["webServer"];
 
 /** Plugin config schema. */
 export const Config = z.object({
@@ -191,37 +191,8 @@ export function apply(ctx, config) {
     };
   }, "dsh-mcp-sync: routes & tools");
 
-  // Expose RPC handles for client
-  ctx.effect(() => {
-    const d1 = ctx.harness.handle("mcp-sync:status", async () => {
-      return {
-        registry: listServers(),
-        connections: clientManager.getStatus(),
-        servers: clientManager.listServers(),
-      };
-    });
-
-    const d2 = ctx.harness.handle("mcp-sync:sync", async () => {
-      await sync("manual sync");
-      return { ok: true };
-    });
-
-    const d3 = ctx.harness.handle("mcp-sync:connect", async (args) => {
-      const registry = loadRegistry();
-      const serverConfig = registry[args.name];
-      if (!serverConfig) return { ok: false, error: "not found" };
-      return await clientManager.connect(args.name, serverConfig);
-    });
-
-    const d4 = ctx.harness.handle("mcp-sync:disconnect", async (args) => {
-      await clientManager.disconnect(args.name);
-      return { ok: true };
-    });
-
-    const d5 = ctx.harness.handle("mcp-sync:callTool", async (args) => {
-      return await clientManager.callTool(args.server, args.tool, args.args || {});
-    });
-
-    return () => { d1(); d2(); d3(); d4(); d5(); };
-  }, "dsh-mcp-sync: harness handles");
+  // 注册 meta 工具（mcp_call、mcp_list_tools）
+  const dCall = registerMcpCallTool(ctx, clientManager);
+  const dList = registerMcpListTools(ctx, clientManager);
+  ctx.logger.info("[mcp-sync] meta tools registered (mcp_call, mcp_list_tools)");
 }
