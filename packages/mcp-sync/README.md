@@ -5,6 +5,12 @@
 
 DSH（DeepSeek Harness）插件：**连接 MCP 服务器、发现工具并注册到 DSH 工具系统**，让模型可以直接调用 MCP 工具。
 
+**v0.6.0 新特性：**
+- ✨ 自动重试机制：连接失败时自动重试（最多3次）
+- 📊 统计信息跟踪：连接成功率、工具调用统计
+- 🏥 健康检查端点：实时监控插件状态
+- 🔄 重新连接功能：一键重连失败的服务器
+
 ## 功能
 
 | 能力 | 说明 |
@@ -17,6 +23,10 @@ DSH（DeepSeek Harness）插件：**连接 MCP 服务器、发现工具并注册
 | 智能去重 | 按 command + args 或 url 去重 |
 | 自定义 MCP | 支持添加自定义 MCP 服务 |
 | 连接管理 | 侧边栏管理面板：连接状态、工具列表、一键刷新 |
+| 自动重试 | 连接失败时自动重试（最多3次，可配置） |
+| 统计信息 | 连接成功率、工具调用统计、运行时间 |
+| 健康检查 | /health 端点实时监控插件状态 |
+| 重新连接 | /reconnect 端点一键重连失败的服务器 |
 
 ## 工作原理
 
@@ -95,23 +105,26 @@ dsh plugin --profile web add dsh-mcp-sync
 
 | 路由 | 方法 | 说明 |
 | --- | --- | --- |
-| /api/dsh-mcp-sync/status | GET | 来源可用性 + 连接状态 |
-| /api/dsh-mcp-sync/servers | GET | 去重后的 MCP 服务列表 |
-| /api/dsh-mcp-sync/config | GET | 各源原始配置文件内容 |
-| /api/dsh-mcp-sync/connections | GET | MCP 客户端连接状态 |
-| /api/dsh-mcp-sync/connect | POST | 连接到指定 MCP 服务器 |
-| /api/dsh-mcp-sync/disconnect | POST | 断开指定 MCP 服务器 |
+| /api/dsh-mcp-sync/registry | GET/POST/DELETE | MCP 服务器注册表（CRUD） |
+| /api/dsh-mcp-sync/sync | POST | 从各来源同步到注册表 |
+| /api/dsh-mcp-sync/sources | GET | 查看各来源配置（只读） |
+| /api/dsh-mcp-sync/connections | GET | MCP 连接状态 |
+| /api/dsh-mcp-sync/connect | POST | 连接到 MCP 服务器 |
+| /api/dsh-mcp-sync/disconnect | POST | 断开连接 |
 | /api/dsh-mcp-sync/tools | GET | 列出所有已发现的 MCP 工具 |
-| /api/dsh-mcp-sync/call | POST | 直接调用 MCP 工具 |
-| /api/dsh-mcp-sync/custom | GET/POST/DELETE | 自定义 MCP 服务管理 |
+| /api/dsh-mcp-sync/call | POST | 调用 MCP 工具 |
+| /api/dsh-mcp-sync/stats | GET | 获取统计信息（v0.6.0） |
+| /api/dsh-mcp-sync/reconnect | POST | 重新连接失败的服务器（v0.6.0） |
+| /api/dsh-mcp-sync/health | GET | 健康检查（v0.6.0） |
 
 ## 侧边栏
 
-设置页面中的「MCP Manager」标签页提供三个子视图：
+设置页面中的「MCP Manager」标签页提供四个子视图：
 
 - **Servers**: 扫描到的 MCP 服务器配置
 - **Connections**: 连接状态和工具数量
 - **Tools**: 所有已发现的 MCP 工具列表
+- **Stats**: 统计信息（v0.6.0）- 运行时间、连接成功率、工具调用统计
 
 ## 开发
 

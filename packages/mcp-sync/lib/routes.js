@@ -12,6 +12,9 @@
  *   POST   /api/dsh-mcp-sync/disconnect      断开连接
  *   GET    /api/dsh-mcp-sync/tools           列出所有已发现的 MCP 工具
  *   POST   /api/dsh-mcp-sync/call            调用 MCP 工具
+ *   GET    /api/dsh-mcp-sync/stats           获取统计信息
+ *   POST   /api/dsh-mcp-sync/reconnect       重新连接失败的服务器
+ *   GET    /api/dsh-mcp-sync/health          健康检查
  */
 import { loadRegistry, upsertServer, removeServer, listServers, importServers } from "./registry.js";
 
@@ -24,13 +27,16 @@ const API = {
   disconnect: "/api/dsh-mcp-sync/disconnect",
   tools: "/api/dsh-mcp-sync/tools",
   call: "/api/dsh-mcp-sync/call",
+  stats: "/api/dsh-mcp-sync/stats",
+  reconnect: "/api/dsh-mcp-sync/reconnect",
+  health: "/api/dsh-mcp-sync/health",
 };
 
 /* ─────────────── loopback trust fence ─────────────── */
 
 function isIPv4Loopback(v4) {
   const parts = v4.split(".");
-  return parts.length === 4 && parts[0] === "127" && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
+  return parts.length === 4 && parts[0] === "127" && parts.every((p) => /^d{1,3}$/.test(p) && Number(p) <= 255);
 }
 
 function isLoopbackAddress(address) {
@@ -100,6 +106,7 @@ function readBody(req) {
 export function makeRoutes(deps) {
   const { sources, config, clientManager } = deps;
   const home = deps.home || undefined;
+  const startTime = Date.now();
 
   const guard = (req, res) => {
     if (!isLoopbackRequest(req)) {
@@ -161,6 +168,7 @@ export function makeRoutes(deps) {
             scanned: scanResult.servers?.length || 0,
             imported: importResult.imported,
             skipped: importResult.skipped,
+            bySource: scanResult.bySource,
           });
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
@@ -281,7 +289,104 @@ export function makeRoutes(deps) {
         }
       },
     },
+
+    /* ── GET /stats - 获取统计信息 ── */
+    {
+      kind: "exact",
+      path: API.stats,
+      handler: (req, res) => {
+        if (req.method !== "GET" || !guard(req, res)) return;
+        try {
+          const stats = clientManager.getStats();
+          const status = clientManager.getStatus();
+          const uptime = Date.now() - startTime;
+          
+          writeJson(res, 200, {
+            stats,
+            status,
+            uptime,
+            uptimeFormatted: formatUptime(uptime),
+          });
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── POST /reconnect - 重新连接失败的服务器 ── */
+    {
+      kind: "exact",
+      path: API.reconnect,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res)) return;
+        try {
+          const body = await readBody(req);
+          if (!body.name) {
+            writeJson(res, 400, { error: "name is required" });
+            return;
+          }
+          
+          const result = await clientManager.reconnect(body.name);
+          writeJson(res, 200, { ok: result });
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── GET /health - 健康检查 ── */
+    {
+      kind: "exact",
+      path: API.health,
+      handler: (req, res) => {
+        if (req.method !== "GET" || !guard(req, res)) return;
+        try {
+          const status = clientManager.getStatus();
+          const stats = clientManager.getStats();
+          const uptime = Date.now() - startTime;
+          
+          const health = {
+            status: "ok",
+            uptime,
+            uptimeFormatted: formatUptime(uptime),
+            connections: status,
+            stats: {
+              totalConnections: stats.totalConnections,
+              successfulConnections: stats.successfulConnections,
+              failedConnections: stats.failedConnections,
+              totalCalls: stats.totalCalls,
+              successfulCalls: stats.successfulCalls,
+              failedCalls: stats.failedCalls,
+            },
+            successRate: stats.totalConnections > 0 
+              ? Math.round((stats.successfulConnections / stats.totalConnections) * 100) 
+              : 0,
+            callSuccessRate: stats.totalCalls > 0 
+              ? Math.round((stats.successfulCalls / stats.totalCalls) * 100) 
+              : 0,
+          };
+          
+          writeJson(res, 200, health);
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
   ];
 
   return { routes };
+}
+
+/* ─────────────── helpers ─────────────── */
+
+function formatUptime(ms) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  
+  if (days > 0) return `${days}d ${hours % 24}h ${minutes % 60}m`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
 }

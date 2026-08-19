@@ -23,6 +23,7 @@ window.__ModuleLoader__.load({
 			tools: "/api/dsh-mcp-sync/tools",
 			connect: "/api/dsh-mcp-sync/connect",
 			disconnect: "/api/dsh-mcp-sync/disconnect",
+			stats: "/api/dsh-mcp-sync/stats",
 		};
 
 		var SOURCE_META = {
@@ -345,12 +346,101 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		
+		/* ───────────── tab content: stats ───────────── */
+
+		function StatsTab() {
+			var ref = useState(null);
+			var data = ref[0], setData = ref[1];
+			var ref2 = useState(true);
+			var loading = ref2[0], setLoading = ref2[1];
+
+			var fetchData = useCallback(async function() {
+				try {
+					setLoading(true);
+					var result = await getJSON(API.stats);
+					setData(result);
+				} catch (e) {
+					setData(null);
+				} finally {
+					setLoading(false);
+				}
+			}, []);
+
+			useEffect(function() { void fetchData(); }, [fetchData]);
+
+			if (loading) {
+				return h("div", { className: "mcp-empty" }, h("span", { className: "mcp-loading" }));
+			}
+
+			if (!data) {
+				return h("div", { className: "mcp-empty" }, "Failed to load statistics");
+			}
+
+			return h("div", { className: "mcp-scroll" },
+				h("div", { className: "mcp-stats" },
+					h("span", null, "Uptime: " + (data.uptimeFormatted || "N/A")),
+					h("span", null,
+						h("span", { className: "mcp-statDot", style: { background: "#22c55e" } }),
+						"Connected: " + ((data.status && data.status.connected) || 0)
+					),
+					h("span", null,
+						h("span", { className: "mcp-statDot", style: { background: "#ef4444" } }),
+						"Error: " + ((data.status && data.status.error) || 0)
+					),
+					h("span", null, "Total Tools: " + ((data.status && data.status.totalTools) || 0))
+				),
+				
+				h("div", { className: "mcp-row" },
+					h("div", { className: "mcp-rowName" }, "Connection Statistics"),
+					h("div", { className: "mcp-rowMeta" },
+						"Total Attempts: " + ((data.stats && data.stats.totalConnections) || 0),
+						h("br"),
+						"Successful: " + ((data.stats && data.stats.successfulConnections) || 0),
+						h("br"),
+						"Failed: " + ((data.stats && data.stats.failedConnections) || 0),
+						h("br"),
+						"Success Rate: " + (data.successRate || 0) + "%"
+					)
+				),
+				
+				h("div", { className: "mcp-row" },
+					h("div", { className: "mcp-rowName" }, "Tool Call Statistics"),
+					h("div", { className: "mcp-rowMeta" },
+						"Total Calls: " + ((data.stats && data.stats.totalCalls) || 0),
+						h("br"),
+						"Successful: " + ((data.stats && data.stats.successfulCalls) || 0),
+						h("br"),
+						"Failed: " + ((data.stats && data.stats.failedCalls) || 0),
+						h("br"),
+						"Success Rate: " + (data.callSuccessRate || 0) + "%"
+					)
+				),
+				
+				h("div", { className: "mcp-row" },
+					h("div", { className: "mcp-rowName" }, "Server Status"),
+					h("div", { className: "mcp-rowMeta" },
+						Object.keys(data.status || {}).filter(function(k) { return k !== "total" && k !== "totalTools"; }).map(function(state) {
+							var count = data.status[state];
+							if (count === 0) return null;
+							var meta = STATE_META[state] || STATE_META.disconnected;
+							return h("div", { key: state, style: { marginBottom: 4 } },
+								h("span", { className: "mcp-statDot", style: { background: meta.color } }),
+								meta.label + ": " + count
+							);
+						}).filter(Boolean)
+					)
+				)
+			);
+		}
+
 		/* ───────────── main panel ───────────── */
 
 		var TABS = [
 			{ id: "servers", label: "Servers" },
 			{ id: "connections", label: "Connections" },
 			{ id: "tools", label: "Tools" },
+			{ id: "stats", label: "Stats" },
 		];
 
 		function McpPanel() {
@@ -361,7 +451,8 @@ window.__ModuleLoader__.load({
 
 			var tabContent = tab === "servers" ? h(ServersTab, { key: refreshKey }) :
 				tab === "connections" ? h(ConnectionsTab, { key: refreshKey }) :
-				h(ToolsTab, { key: refreshKey });
+				tab === "tools" ? h(ToolsTab, { key: refreshKey }) :
+				h(StatsTab, { key: refreshKey });
 
 			return h("div", { className: "mcp-panel" },
 				h("div", { className: "mcp-header" },

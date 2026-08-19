@@ -29,23 +29,38 @@ export class McpClientManager {
    * @param {object} opts
    * @param {function} opts.logger - logging function (level, msg)
    * @param {number} [opts.callTimeoutMs=30000] - default tool call timeout
+   * @param {number} [opts.maxRetries=3] - max connection retries
+   * @param {number} [opts.retryDelayMs=1000] - delay between retries
    */
   constructor(opts = {}) {
-    /** @type {Map<string, {client: Client, transport: object, tools: object[], state: string, error: string|null, connectedAt: number, config: object}>} */
+    /** @type {Map<string, {client: Client, transport: object, tools: object[], state: string, error: string|null, connectedAt: number, config: object, retryCount: number, lastRetryAt: number}>} */
     this.connections = new Map();
     this.logger = opts.logger || (() => {});
     this.callTimeoutMs = opts.callTimeoutMs || 30000;
+    this.maxRetries = opts.maxRetries || 3;
+    this.retryDelayMs = opts.retryDelayMs || 1000;
+    
+    // 统计信息
+    this.stats = {
+      totalConnections: 0,
+      successfulConnections: 0,
+      failedConnections: 0,
+      totalCalls: 0,
+      successfulCalls: 0,
+      failedCalls: 0,
+    };
   }
 
   /* ── public API ── */
 
   /**
-   * Connect to an MCP server.
+   * Connect to an MCP server with retry logic.
    * @param {string} id - unique server id
    * @param {object} serverConfig - MCP server config {type, command, args, env, url}
-   * @returns {Promise<{ok: boolean, tools: object[], error?: string}>}
+   * @param {boolean} [retry=false] - internal flag for retry logic
+   * @returns {Promise<{ok: boolean, tools: object[], error?: string, retryCount?: number}>}
    */
-  async connect(id, serverConfig) {
+  async connect(id, serverConfig, retry = false) {
     const existing = this.connections.get(id);
     if (existing?.state === ConnectionState.CONNECTED) {
       return { ok: true, tools: existing.tools };
@@ -56,8 +71,23 @@ export class McpClientManager {
       await this.disconnect(id);
     }
 
+    // Check retry limit
+    const retryCount = existing?.retryCount || 0;
+    if (retry && retryCount >= this.maxRetries) {
+      const msg = `Max retries (${this.maxRetries}) reached for ${id}`;
+      this._setState(id, ConnectionState.ERROR, msg);
+      this.logger("warn", `[mcp-client] ${msg}`);
+      return { ok: false, tools: [], error: msg, retryCount };
+    }
+
     this._setState(id, ConnectionState.CONNECTING);
-    this.logger("info", `[mcp-client] connecting to ${id} | type=${serverConfig.type || "stdio"}`);
+    this.stats.totalConnections++;
+    
+    if (!retry) {
+      this.logger("info", `[mcp-client] connecting to ${id} | type=${serverConfig.type || "stdio"}`);
+    } else {
+      this.logger("info", `[mcp-client] retrying ${id} (attempt ${retryCount + 1}/${this.maxRetries})`);
+    }
 
     try {
       const transport = this._createTransport(serverConfig);
@@ -85,15 +115,41 @@ export class McpClientManager {
         error: null,
         connectedAt: Date.now(),
         config: serverConfig,
+        retryCount: 0,
+        lastRetryAt: 0,
       });
 
+      this.stats.successfulConnections++;
       this.logger("info", `[mcp-client] connected to ${id} | tools=${tools.length}`);
       return { ok: true, tools };
     } catch (error) {
       const msg = String(error?.message || error);
-      this._setState(id, ConnectionState.ERROR, msg);
+      this.stats.failedConnections++;
+      
+      // 设置错误状态，但保留重试信息
+      this.connections.set(id, {
+        client: null,
+        transport: null,
+        tools: [],
+        state: ConnectionState.ERROR,
+        error: msg,
+        connectedAt: 0,
+        config: serverConfig,
+        retryCount: retryCount + 1,
+        lastRetryAt: Date.now(),
+      });
+
       this.logger("warn", `[mcp-client] failed to connect to ${id}: ${msg}`);
-      return { ok: false, tools: [], error: msg };
+      
+      // 如果是可重试的错误，安排重试
+      if (this._isRetryableError(error) && retryCount < this.maxRetries) {
+        this.logger("info", `[mcp-client] scheduling retry for ${id} in ${this.retryDelayMs}ms`);
+        setTimeout(() => {
+          this.connect(id, serverConfig, true).catch(() => {});
+        }, this.retryDelayMs);
+      }
+      
+      return { ok: false, tools: [], error: msg, retryCount: retryCount + 1 };
     }
   }
 
@@ -140,6 +196,7 @@ export class McpClientManager {
     }
 
     const timeout = timeoutMs || this.callTimeoutMs;
+    this.stats.totalCalls++;
 
     try {
       this.logger("info", `[mcp-client] calling ${serverId}/${toolName}`);
@@ -163,9 +220,11 @@ export class McpClientManager {
         isError: result?.isError || false,
       };
       
+      this.stats.successfulCalls++;
       return { ok: true, result: safeResult };
     } catch (error) {
       const msg = String(error?.message || error);
+      this.stats.failedCalls++;
       this.logger("warn", `[mcp-client] call failed ${serverId}/${toolName}: ${msg}`);
       
       // Mark connection as error if it's a connection issue
@@ -216,6 +275,7 @@ export class McpClientManager {
         tools: conn.tools,
         connectedAt: conn.connectedAt,
         config: { type: conn.config?.type || "stdio", command: conn.config?.command, url: conn.config?.url },
+        retryCount: conn.retryCount || 0,
       });
     }
     return {
@@ -266,6 +326,28 @@ export class McpClientManager {
     return status;
   }
 
+  /**
+   * Get manager statistics.
+   * @returns {object}
+   */
+  getStats() {
+    return { ...this.stats };
+  }
+
+  /**
+   * Reset statistics.
+   */
+  resetStats() {
+    this.stats = {
+      totalConnections: 0,
+      successfulConnections: 0,
+      failedConnections: 0,
+      totalCalls: 0,
+      successfulCalls: 0,
+      failedCalls: 0,
+    };
+  }
+
   /* ── internals ── */
 
   /** @private */
@@ -310,7 +392,25 @@ export class McpClientManager {
         error,
         connectedAt: 0,
         config: null,
+        retryCount: 0,
+        lastRetryAt: 0,
       });
     }
+  }
+
+  /** @private */
+  _isRetryableError(error) {
+    const msg = String(error?.message || error).toLowerCase();
+    // 可重试的错误类型
+    return (
+      msg.includes('econnreset') ||
+      msg.includes('epipe') ||
+      msg.includes('timeout') ||
+      msg.includes('closed') ||
+      msg.includes('enotfound') ||
+      msg.includes('econnrefused') ||
+      msg.includes('socket hang up') ||
+      msg.includes('client has been disconnected')
+    );
   }
 }

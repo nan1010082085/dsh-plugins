@@ -31,11 +31,33 @@ dsh plugin --profile web add dsh-mcp-sync
 ## 发布流程（强制）
 
 1. 修改 lib/ 下的文件
-2. 更新 package.json 的 version
+2. 更新 package.json 的 version (当前: 0.6.0)
 3. `cd packages/mcp-sync && npm publish`
 4. **`./scripts/sync-repos.sh mcp-sync`**（同步到独立 GitHub repo）
 5. `dsh plugin --profile web add github:nan1010082085/dsh-mcp-sync`
 6. 运行 `dsh web` 验证无报错
+
+## v0.6.0 新特性
+
+### 1. 自动重试机制 (mcp-client.js)
+- 连接失败时自动重试（最多3次，可配置）
+- 可重试错误类型：ECONNRESET、EPIPE、timeout、closed、ENOTFOUND、ECONNREFUSED
+- 可配置参数：maxRetries、retryDelayMs
+
+### 2. 统计信息跟踪 (mcp-client.js)
+- 连接统计：总连接数、成功数、失败数
+- 调用统计：总调用数、成功数、失败数
+- 成功率计算：连接成功率、调用成功率
+
+### 3. 新增 API 端点 (routes.js)
+- GET /stats: 获取统计信息和运行时间
+- POST /reconnect: 重新连接失败的服务器
+- GET /health: 健康检查，返回详细状态信息
+
+### 4. 客户端 UI 改进 (client.js)
+- 新增 Stats 标签页
+- 显示运行时间、连接统计、工具调用统计
+- 显示服务器状态分布
 
 ## 文件结构
 
@@ -69,6 +91,9 @@ dsh plugin --profile web add dsh-mcp-sync
 | /api/dsh-mcp-sync/disconnect | POST | 断开连接 |
 | /api/dsh-mcp-sync/tools | GET | 列出工具 |
 | /api/dsh-mcp-sync/call | POST | 调用工具 |
+| /api/dsh-mcp-sync/stats | GET | 获取统计信息（v0.6.0） |
+| /api/dsh-mcp-sync/reconnect | POST | 重新连接失败的服务器（v0.6.0） |
+| /api/dsh-mcp-sync/health | GET | 健康检查（v0.6.0） |
 
 ## 依赖
 
