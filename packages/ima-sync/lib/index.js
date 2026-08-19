@@ -304,9 +304,7 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
     }
   }
 
-  const appendContent = isDaily
-    ? `\n\n### [${project}] ${task}\n\n${summary}\n\n${detail}`
-    : `\n\n### ${task}\n\n${summary}\n\n${detail}`;
+  const appendContent = `\n\n### ${task}\n\n${summary}` + (detail ? `\n\n${detail}` : "");
 
   if (noteId) {
     try {
@@ -324,9 +322,7 @@ async function uploadDirect({ creds, project, task, summary, detail, cacheDir, w
     }
   }
 
-  const fullContent = isDaily
-    ? `# ${dailyTitle}\n\n- **日期**：${date}\n\n---\n\n### [${project}] ${task}\n\n${summary}\n\n${detail}`
-    : `# ${dailyTitle}\n\n- **项目**：${project}\n- **日期**：${date}\n\n---\n\n### ${task}\n\n${summary}\n\n${detail}`;
+  const fullContent = `# ${dailyTitle}\n\n### ${task}\n\n${summary}` + (detail ? `\n\n${detail}` : "");
   const created = await callIma("openapi/note/v1/import_doc", { content_format: 1, content: fullContent }, creds);
   const newId = created.data?.note_id ?? "";
   if (!newId) throw new Error("IMA import_doc 未返回 note_id");
