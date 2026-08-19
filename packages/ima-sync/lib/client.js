@@ -65,6 +65,11 @@ window.__ModuleLoader__.load({
 			".ims-status { margin-top: 12px; padding: 10px; border-radius: 6px; font-size: 13px; }",
 			".ims-status-success { background: rgba(52,199,89,.15); color: #34c759; }",
 			".ims-status-error { background: rgba(255,59,48,.15); color: #ff3b30; }",
+			".ims-toast { position: fixed; top: 20px; right: 20px; z-index: 10000; padding: 12px 20px; border-radius: 8px; font-size: 13px; box-shadow: 0 4px 12px rgba(0,0,0,.15); animation: imsToastIn .3s ease, imsToastOut .3s ease 2.7s; pointer-events: none; }",
+			".ims-toast-success { background: #34c759; color: #fff; }",
+			".ims-toast-error { background: #ff3b30; color: #fff; }",
+			"@keyframes imsToastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }",
+			"@keyframes imsToastOut { from { opacity: 1; } to { opacity: 0; } }",
 		].join("\n");
 
 		function injectStyles() {
@@ -192,6 +197,7 @@ window.__ModuleLoader__.load({
 				clientId: "",
 				apiKey: "",
 				workKbId: "",
+				workKbName: "",
 				imaUploadBin: "",
 				projectsFile: "",
 				cacheDir: "",
@@ -211,6 +217,12 @@ window.__ModuleLoader__.load({
 			const [useManualOverride, setUseManualOverride] = useState(false);
 			const [newProjectName, setNewProjectName] = useState("");
 			const [newProjectKbId, setNewProjectKbId] = useState("");
+			const [toast, setToast] = useState(null);
+
+			const showToast = useCallback((type, message) => {
+				setToast({ type, message });
+				setTimeout(() => setToast(null), 3000);
+			}, []);
 
 			useEffect(() => {
 				(async () => {
@@ -245,16 +257,15 @@ window.__ModuleLoader__.load({
 
 			const handleSave = useCallback(async () => {
 				setSaving(true);
-				setStatus(null);
 				try {
 					const saveConfig = { ...config };
 					if (!useManualOverride) {
 						saveConfig.manualOverride = { clientId: "", apiKey: "", workKbId: "" };
 					}
 					await postJSON(API.save, saveConfig);
-					setStatus({ type: "success", message: t("saveSuccess") });
+					showToast("success", t("saveSuccess"));
 				} catch (err) {
-					setStatus({ type: "error", message: t("saveError") + err.message });
+					showToast("error", t("saveError") + err.message);
 				} finally {
 					setSaving(false);
 				}
@@ -303,6 +314,8 @@ window.__ModuleLoader__.load({
 			}
 
 			return h("div", { style: { maxWidth: 760, padding: "0 0 24px" } },
+				// Toast 通知
+				toast ? h("div", { className: `ims-toast ims-toast-${toast.type}` }, toast.message) : null,
 				status ? h("div", { className: "ims-status ims-status-" + status.type }, status.message) : null,
 
 				// General

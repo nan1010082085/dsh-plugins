@@ -79,9 +79,17 @@ function readTrimmed(file) {
 }
 
 function resolveConfig(config) {
-  const base = config && typeof config === "object" ? config : {};
+  // 合并本地保存的配置
+  let savedConfig = {};
+  try {
+    const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
+    if (existsSync(configFile)) {
+      savedConfig = JSON.parse(readFileSync(configFile, "utf8"));
+    }
+  } catch {}
+  const base = { ...savedConfig, ...(config && typeof config === "object" ? config : {}) };
   // 无论是否经过 schemastery 校验，都补齐默认值（对原始 config 也健壮）。
-  
+
   // 手动配置覆盖（最高优先级）
   const manualOverride = base.manualOverride || {};
   
@@ -696,8 +704,12 @@ function apply(ctx, config) {
         if (req.method === "POST") {
           try {
             const newConfig = await readBody(req);
-            log("收到配置更新请求");
-            writeJson(res, 200, { success: true, message: "配置已更新（需要重启 DSH 生效）" });
+            // 保存到本地配置文件
+            const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
+            mkdirSync(path.dirname(configFile), { recursive: true });
+            writeFileSync(configFile, JSON.stringify(newConfig, null, 2));
+            log("配置已保存到 " + configFile);
+            writeJson(res, 200, { success: true, message: "配置已保存" });
           } catch (err) {
             writeJson(res, 500, { error: err.message });
           }
