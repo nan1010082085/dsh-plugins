@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
 
 		var API = {
 			servers: "/api/dsh-mcp-sync/servers",
+			registry: "/api/dsh-mcp-sync/registry",
 			connections: "/api/dsh-mcp-sync/connections",
 			tools: "/api/dsh-mcp-sync/tools",
 			connect: "/api/dsh-mcp-sync/connect",
@@ -96,6 +97,9 @@ window.__ModuleLoader__.load({
 			".mcp-toolDesc { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 2px; white-space: pre-wrap; word-break: break-word; }",
 			".mcp-toolServer { font-size: 10px; color: #60a5fa; margin-left: 4px; }",
 			"@keyframes mcpSpin { to { transform: rotate(360deg) } }",
+			".mcp-input { width: 100%; height: 28px; border-radius: 4px; border: 1px solid rgba(127,127,127,.25); background: var(--dsw-alias-bg-elevated, rgba(127,127,127,.06)); color: var(--dsw-alias-label-primary); padding: 0 8px; font-size: 12px; outline: none; }",
+			".mcp-input:focus { border-color: rgba(127,127,127,.45); }",
+			".mcp-input::placeholder { color: var(--dsw-alias-label-secondary); opacity: .6; }",
 		].join("\n");
 
 		function injectStyles() {
@@ -115,6 +119,12 @@ window.__ModuleLoader__.load({
 			var loading = ref2[0], setLoading = ref2[1];
 			var ref3 = useState("");
 			var error = ref3[0], setError = ref3[1];
+			var ref4 = useState(false);
+			var showAdd = ref4[0], setShowAdd = ref4[1];
+			var ref5 = useState({ name: "", type: "stdio", command: "", args: "", url: "" });
+			var form = ref5[0], setForm = ref5[1];
+			var ref6 = useState("");
+			var addError = ref6[0], setAddError = ref6[1];
 
 			var fetchData = useCallback(async function() {
 				try {
@@ -131,6 +141,37 @@ window.__ModuleLoader__.load({
 
 			useEffect(function() { void fetchData(); }, [fetchData]);
 
+			var handleAdd = useCallback(async function() {
+				setAddError("");
+				if (!form.name.trim()) { setAddError("请输入服务器名称"); return; }
+				var config = { type: form.type };
+				if (form.type === "stdio") {
+					if (!form.command.trim()) { setAddError("请输入命令"); return; }
+					config.command = form.command.trim();
+					config.args = form.args.trim() ? form.args.trim().split(/\s+/) : [];
+				} else {
+					if (!form.url.trim()) { setAddError("请输入 URL"); return; }
+					config.url = form.url.trim();
+				}
+				try {
+					await postJSON(API.registry, { name: form.name.trim(), config: config });
+					setShowAdd(false);
+					setForm({ name: "", type: "stdio", command: "", args: "", url: "" });
+					void fetchData();
+				} catch (e) {
+					setAddError(String(e.message || e));
+				}
+			}, [form, fetchData]);
+
+			var handleDelete = useCallback(async function(name) {
+				try {
+					await fetch(API.registry + "?name=" + encodeURIComponent(name), { method: "DELETE" });
+					void fetchData();
+				} catch (e) {
+					setError(String(e.message || e));
+				}
+			}, [fetchData]);
+
 			var servers = (data && data.servers) || [];
 			var bySource = (data && data.bySource) || {};
 
@@ -143,8 +184,28 @@ window.__ModuleLoader__.load({
 							meta.label + ": " + (bySource[id] || 0)
 						);
 					}),
-					h("span", null, "Total: " + ((data && data.total) || 0))
+					h("span", null, "Total: " + ((data && data.total) || 0)),
+					h("button", { className: "mcp-btn mcp-btn-primary", onClick: function() { setShowAdd(!showAdd); } }, showAdd ? "取消" : "+ 添加")
 				),
+
+				// 添加自定义 MCP 表单
+				showAdd ? h("div", { style: { padding: "12px", borderBottom: "1px solid rgba(127,127,127,.15)" } },
+					h("div", { style: { fontSize: 12, fontWeight: 600, marginBottom: 8 } }, "添加自定义 MCP 服务器"),
+					addError ? h("div", { style: { fontSize: 11, color: "#f87171", marginBottom: 8 } }, addError) : null,
+					h("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+						h("input", { className: "mcp-input", placeholder: "名称 (如 my-server)", value: form.name, onChange: function(e) { setForm(function(prev) { return Object.assign({}, prev, { name: e.target.value }); }); } }),
+						h("select", { className: "mcp-input", value: form.type, onChange: function(e) { setForm(function(prev) { return Object.assign({}, prev, { type: e.target.value }); }); } },
+							h("option", { value: "stdio" }, "stdio (本地命令)"),
+							h("option", { value: "sse" }, "sse (远程 URL)")
+						),
+						form.type === "stdio" ? h("div", { style: { display: "flex", gap: 6 } },
+							h("input", { className: "mcp-input", placeholder: "命令 (如 npx)", value: form.command, onChange: function(e) { setForm(function(prev) { return Object.assign({}, prev, { command: e.target.value }); }); }, style: { flex: 1 } }),
+							h("input", { className: "mcp-input", placeholder: "参数 (空格分隔)", value: form.args, onChange: function(e) { setForm(function(prev) { return Object.assign({}, prev, { args: e.target.value }); }); }, style: { flex: 2 } })
+						) : h("input", { className: "mcp-input", placeholder: "URL (如 http://localhost:3001/sse)", value: form.url, onChange: function(e) { setForm(function(prev) { return Object.assign({}, prev, { url: e.target.value }); }); } }),
+						h("button", { className: "mcp-btn mcp-btn-primary", onClick: handleAdd, style: { alignSelf: "flex-start" } }, "添加")
+					)
+				) : null,
+
 				h("div", { className: "mcp-scroll" },
 					error ? h("div", { className: "mcp-empty" }, "Load failed: " + error) :
 					loading ? h("div", { className: "mcp-empty" }, h("span", { className: "mcp-loading" })) :
@@ -152,19 +213,26 @@ window.__ModuleLoader__.load({
 					servers.map(function(s) {
 						var sources = s.sources || [s.source];
 						return h("div", { key: s.name + ":" + s.source, className: "mcp-row" },
-							h("span", { className: "mcp-rowName" }, s.name),
-							h("span", { className: "mcp-rowSources" },
-								sources.map(function(src) {
-									var meta = SOURCE_META[src];
-									return h("span", {
-										key: src,
-										className: "mcp-badge",
-										style: { background: (meta && meta.color) || "#888" },
-									}, (meta && meta.label) || src);
-								})
+							h("div", { style: { display: "flex", alignItems: "center" } },
+								h("span", { className: "mcp-rowName" }, s.name),
+								h("span", { className: "mcp-rowSources" },
+									sources.map(function(src) {
+										var meta = SOURCE_META[src];
+										return h("span", {
+											key: src,
+											className: "mcp-badge",
+											style: { background: (meta && meta.color) || "#888" },
+										}, (meta && meta.label) || src);
+									})
+								),
+								s.source === "custom" || s.source === "registry" ? h("button", {
+									className: "mcp-btn mcp-btn-danger",
+									style: { marginLeft: "auto", fontSize: 10 },
+									onClick: function() { handleDelete(s.name); }
+								}, "删除") : null
 							),
 							h("div", { className: "mcp-rowMeta" },
-								s.type === "stdio" ? s.command + " " + s.args.join(" ") : s.url
+								s.type === "stdio" ? s.command + " " + (s.args || []).join(" ") : s.url
 							)
 						);
 					})
