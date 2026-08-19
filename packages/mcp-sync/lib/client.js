@@ -17,7 +17,6 @@ window.__ModuleLoader__.load({
 		/* ───────────── constants & helpers ───────────── */
 
 		var API = {
-			servers: "/api/dsh-mcp-sync/servers",
 			registry: "/api/dsh-mcp-sync/registry",
 			connections: "/api/dsh-mcp-sync/connections",
 			tools: "/api/dsh-mcp-sync/tools",
@@ -131,7 +130,7 @@ window.__ModuleLoader__.load({
 				try {
 					setLoading(true);
 					setError("");
-					var result = await getJSON(API.servers);
+					var result = await getJSON(API.registry);
 					setData(result);
 				} catch (e) {
 					setError(String(e.message || e));
