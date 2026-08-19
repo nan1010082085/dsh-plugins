@@ -26,19 +26,11 @@ DSH（DeepSeek Harness）插件：**把 DSH 的对话进度自动上传到腾讯
 
 ## 安装
 
-### 从 GitHub 安装（推荐）
-
 ```sh
-# 公开仓库，直接安装
-dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/ima-sync
+# 从 GitHub 安装（独立仓库，已发布 npm）
+dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
 
-# 重启 dsh web 生效
-```
-
-### 从 npm 安装
-
-```sh
-# 使用 dsh plugin 安装（推荐）
+# 或从 npm 安装
 dsh plugin --profile web add dsh-plugin-ima-sync
 
 # 重启 dsh web 生效

@@ -15,19 +15,13 @@ DSH(DeepSeek Harness)插件 monorepo。每个包是一个独立可安装的 dsh 
 
 ## 安装(任一包)
 
-### 从 GitHub 安装(推荐)
-
 ```sh
-# 公开仓库,直接安装
-dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/chat-sync
-dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/ima-sync
-dsh plugin --profile web add github:nan1010082085/dsh-plugins/packages/mcp-sync
-```
+# 从 GitHub 安装（独立仓库，已发布 npm）
+dsh plugin --profile web add github:nan1010082085/dsh-chat-sync
+dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
+dsh plugin --profile web add github:nan1010082085/dsh-mcp-sync
 
-### 本地开发安装
-
-```sh
-# 本地 link 安装(改源码重启 dsh web 即生效)
+# 或本地 link 安装（改源码重启 dsh web 即生效）
 dsh plugin --profile web add link:$(pwd)/packages/chat-sync
 dsh plugin --profile web add link:$(pwd)/packages/ima-sync
 dsh plugin --profile web add link:$(pwd)/packages/mcp-sync
