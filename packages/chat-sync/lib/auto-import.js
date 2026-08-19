@@ -22,14 +22,12 @@ export class AutoImporter {
    * @param {import("./sources.js").ChatSources} opts.sources
    * @param {object} opts.apiProxy - DSH API proxy (sessions, workspace)
    * @param {object} opts.logger - 日志器
-   * @param {number} opts.maxImportChars - 导入消息的最大字符数
    * @param {string} opts.importStateFile - 导入状态文件路径
    */
   constructor(opts) {
     this.sources = opts.sources;
     this.api = opts.apiProxy;
     this.logger = opts.logger;
-    this.maxImportChars = opts.maxImportChars ?? 50000;
     this.importStateFile = opts.importStateFile ?? ".chat-sync/imported.json";
     this.imported = new Map(); // sourceSessionId -> dshSessionId
     this.workspaceCache = new Map(); // path -> workspaceId
@@ -135,17 +133,10 @@ export class AutoImporter {
    * @returns {Promise<string|null>} DSH 会话 ID
    */
   async importSession(session) {
-    // 1. 读取消息
-    const messages = this.readMessages(session);
-    if (!messages || messages.length === 0) {
-      this.logger.debug(`[chat-sync] 跳过空会话: ${session.id}`);
-      return null;
-    }
-
-    // 2. 确定工作区
+    // 1. 确定工作区
     const workspaceId = await this.ensureWorkspace(session.cwd || session.project);
 
-    // 3. 创建 DSH 会话
+    // 2. 创建 DSH 会话
     const createResult = await this.api.sessions.create(request({
       ...workspaceId ? { workspaceId } : { cwd: session.cwd },
     }));
@@ -156,7 +147,7 @@ export class AutoImporter {
 
     const dshSessionId = createResult.result.value.sessionId;
 
-    // 4. 重命名会话
+    // 3. 重命名会话
     const title = this.formatTitle(session);
     const renameResult = await this.api.sessions.rename(request({
       sessionId: dshSessionId,
@@ -167,31 +158,8 @@ export class AutoImporter {
       this.logger.warn(`[chat-sync] 重命名会话失败: ${renameResult.result.error?.message}`);
     }
 
-    // 5. 注入对话历史作为上下文
-    const contextText = this.formatContext(session, messages);
-    const promptResult = await this.api.sessions.prompt(request({
-      sessionId: dshSessionId,
-      mode: "queue",
-      content: [{ type: "text", text: contextText }],
-    }));
-
-    if (!promptResult.result.ok) {
-      this.logger.warn(`[chat-sync] 注入上下文失败: ${promptResult.result.error?.message}`);
-    }
-
     this.logger.info(`[chat-sync] 已导入会话: ${session.source}/${session.project} → ${dshSessionId}`);
     return dshSessionId;
-  }
-
-  /**
-   * 读取源会话的消息
-   * @param {object} session
-   * @returns {Array} 消息列表
-   */
-  readMessages(session) {
-    const result = this.sources.readMessages(session.id, 0);
-    if (result.error) return [];
-    return result.messages || [];
   }
 
   /**
@@ -257,50 +225,4 @@ export class AutoImporter {
     return `[${sourceLabel}] ${title}`;
   }
 
-  /**
-   * 格式化上下文消息
-   * @param {object} session
-   * @param {Array} messages
-   * @returns {string}
-   */
-  formatContext(session, messages) {
-    const sourceLabel = {
-      claude: "Claude Code",
-      codex: "Codex CLI",
-      cursor: "Cursor Agent",
-    }[session.source] || session.source;
-
-    const lines = [
-      `以下是从 ${sourceLabel} 导入的对话历史。你可以基于这些上下文继续回答用户的问题。\n`,
-      `--- 原始对话历史 ---\n`,
-    ];
-
-    let totalChars = 0;
-    for (const msg of messages) {
-      const role = msg.role === "user" ? "👤 用户" : msg.role === "assistant" ? "🤖 助手" : msg.role;
-      const text = msg.text || "";
-      
-      // 截断过长的消息
-      const truncated = text.length > 2000 
-        ? text.slice(0, 2000) + "... (已截断)"
-        : text;
-
-      const line = `[${role}]\n${truncated}\n`;
-      
-      if (totalChars + line.length > this.maxImportChars) {
-        lines.push("... (消息过多，已截断)\n");
-        break;
-      }
-
-      lines.push(line);
-      totalChars += line.length;
-    }
-
-    lines.push(`--- 导入完成 ---\n`);
-    lines.push(`原始会话: ${session.source}:${session.localId}\n`);
-    lines.push(`项目: ${session.project}\n`);
-    lines.push(`更新时间: ${new Date(session.updatedAt).toLocaleString()}\n`);
-
-    return lines.join("");
-  }
 }

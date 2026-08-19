@@ -10,7 +10,6 @@
 #       syncToWorkspace: true  # 文件复制到 .chat-sync 目录
 #       autoImport: true       # 自动导入为 DSH 会话
 #       autoImportIntervalMs: 60000  # 扫描间隔
-#       maxImportChars: 50000  # 导入上下文最大字符数
 
 - insert:
     - id: chat-sync

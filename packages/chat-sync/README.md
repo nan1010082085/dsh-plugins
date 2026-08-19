@@ -9,9 +9,8 @@ DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor A
 
 | 能力 | 说明 |
 | --- | --- |
-| **自动导入** | 发现新对话自动创建 DSH 会话，注入完整对话历史作为上下文 |
+| **自动导入** | 发现新对话自动创建 DSH 会话 |
 | **工作区匹配** | 按源对话的项目路径自动匹配或创建 DSH 工作区 |
-| **继续对话** | 导入后的会话是真正的 DSH 会话，可在侧边栏继续提问 |
 | 三源分组 | 侧边栏按 Claude Code / Codex CLI / Cursor Agent 分组显示 |
 | 动态同步 | fs.watch 递归监听 + SSE 推送，列表自动刷新 |
 | 隐私围栏 | 所有 API 仅接受 loopback 请求 |

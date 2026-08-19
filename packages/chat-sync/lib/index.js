@@ -43,8 +43,6 @@ export const Config = z.object({
   autoImport: z.boolean().default(true),
   /** 自动导入扫描间隔（ms） */
   autoImportIntervalMs: z.number().step(1).min(10000).default(60000),
-  /** 导入上下文最大字符数 */
-  maxImportChars: z.number().step(1).min(1000).default(50000),
 });
 
 /** Resolve raw config with defaults. */
@@ -63,7 +61,6 @@ function resolve(config) {
     syncToWorkspace: c.syncToWorkspace ?? true,
     autoImport: c.autoImport ?? true,
     autoImportIntervalMs: c.autoImportIntervalMs ?? 60000,
-    maxImportChars: c.maxImportChars ?? 50000,
   };
 }
 
@@ -104,7 +101,6 @@ export function apply(ctx, config) {
       sources,
       apiProxy: ctx.apiProxy,
       logger: ctx.logger,
-      maxImportChars: opts.maxImportChars,
       importStateFile: join(opts.workspaceDir, "imported.json"),
     });
   }
