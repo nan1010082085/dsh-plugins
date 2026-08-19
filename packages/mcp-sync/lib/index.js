@@ -152,19 +152,22 @@ export function apply(ctx, config) {
     ctx.logger.info("[mcp-sync] connected " + connectedCount + "/" + serverNames.length + " servers");
 
     // 注册工具到 DSH（需要 tools 服务，仅 headless/agent profile 可用）
-    if (opts.registerTools && connectedCount > 0 && ctx.tools) {
-      disposeTools();
+    if (opts.registerTools && connectedCount > 0) {
       try {
-        const { registered, disposers } = registerMcpTools(ctx, clientManager, (level, msg) => ctx.logger[level](msg));
-        toolDisposers = disposers;
-        if (registered.length > 0) {
-          ctx.logger.info("[mcp-sync] registered " + registered.length + " MCP tools into DSH");
+        const toolsAvailable = ctx.reflect?.get("tools");
+        if (toolsAvailable) {
+          disposeTools();
+          const { registered, disposers } = registerMcpTools(ctx, clientManager, (level, msg) => ctx.logger[level](msg));
+          toolDisposers = disposers;
+          if (registered.length > 0) {
+            ctx.logger.info("[mcp-sync] registered " + registered.length + " MCP tools into DSH");
+          }
+        } else {
+          ctx.logger.info("[mcp-sync] tools service not available (web profile), skipping tool registration");
         }
       } catch (error) {
         ctx.logger.warn("[mcp-sync] tool registration failed: " + (error?.message || error));
       }
-    } else if (opts.registerTools && connectedCount > 0 && !ctx.tools) {
-      ctx.logger.info("[mcp-sync] tools service not available (web profile), skipping tool registration");
     }
   }
 
@@ -193,10 +196,15 @@ export function apply(ctx, config) {
     };
   }, "dsh-mcp-sync: routes & tools");
 
-  // 注册 meta 工具（需要 tools 服务）
-  if (ctx.tools) {
-    const dCall = registerMcpCallTool(ctx, clientManager);
-    const dList = registerMcpListTools(ctx, clientManager);
-    ctx.logger.info("[mcp-sync] meta tools registered (mcp_call, mcp_list_tools)");
+  // 注册 meta 工具（需要 tools 服务，web profile 不可用）
+  // 通过 ctx.reflect 检查 tools 服务是否存在，避免直接访问未注入的服务
+  try {
+    if (ctx.reflect?.get("tools")) {
+      const dCall = registerMcpCallTool(ctx, clientManager);
+      const dList = registerMcpListTools(ctx, clientManager);
+      ctx.logger.info("[mcp-sync] meta tools registered (mcp_call, mcp_list_tools)");
+    }
+  } catch {
+    // tools 服务不可用（web profile），跳过
   }
 }
