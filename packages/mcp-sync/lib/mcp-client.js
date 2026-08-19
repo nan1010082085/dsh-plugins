@@ -151,7 +151,19 @@ export class McpClientManager {
       });
       
       const result = await Promise.race([callPromise, timeoutPromise]);
-      return { ok: true, result };
+      
+      // 确保 result 是可序列化的 JSON
+      const safeResult = {
+        content: Array.isArray(result?.content) ? result.content.map(block => {
+          if (block.type === "text") return { type: "text", text: String(block.text || "") };
+          if (block.type === "image") return { type: "image", mimeType: String(block.mimeType || ""), data: String(block.data || "") };
+          // 其他类型转为字符串
+          return { type: "text", text: JSON.stringify(block) };
+        }) : [],
+        isError: result?.isError || false,
+      };
+      
+      return { ok: true, result: safeResult };
     } catch (error) {
       const msg = String(error?.message || error);
       this.logger("warn", `[mcp-client] call failed ${serverId}/${toolName}: ${msg}`);

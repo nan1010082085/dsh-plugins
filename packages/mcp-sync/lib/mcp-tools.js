@@ -1,132 +1,88 @@
 /**
  * dsh-mcp-sync tool registration.
  *
- * Registers MCP server tools into DSH's tool system so the model can call them
- * directly. Each MCP tool becomes a DSH tool with the naming pattern:
- *   mcp__<serverId>__<toolName>
- *
- * Also registers meta-tools: mcp_call and mcp_list_tools.
+ * Registers MCP server tools into DSH's tool system.
+ * Naming: mcp__<serverId>__<toolName>
+ * Plus meta-tools: mcp_call, mcp_list_tools
  */
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 /**
- * Convert MCP JSON Schema input to DSH ParameterSchemaSpec.
- * @param {object} jsonSchema - MCP tool's inputSchema (JSON Schema)
- * @returns {object} DSH ParameterSchemaSpec
+ * Convert JSON Schema properties to DSH ParameterSchemaSpec.
  */
-function jsonSchemaToParameterSpec(jsonSchema) {
+function jsonSchemaToParameters(jsonSchema) {
   if (!jsonSchema || jsonSchema.type !== "object" || !jsonSchema.properties) {
-    return {
-      args: {
-        type: "json",
-        description: "Tool arguments as a JSON object",
-      },
-    };
+    return { args: { type: "json", description: "Tool arguments as JSON" } };
   }
 
   const spec = {};
   const required = new Set(jsonSchema.required || []);
 
-  for (const [key, propSchema] of Object.entries(jsonSchema.properties)) {
-    const prop = { ...jsonSchemaPropToSpec(propSchema) };
-    if (required.has(key)) prop.required = true;
-    spec[key] = prop;
-  }
+  for (const [key, prop] of Object.entries(jsonSchema.properties)) {
+    const base = { description: prop.description || "" };
+    if (required.has(key)) base.required = true;
 
+    switch (prop.type) {
+      case "string":
+        spec[key] = { type: "string", ...base };
+        if (prop.enum) spec[key].enum = prop.enum;
+        break;
+      case "number":
+      case "integer":
+        spec[key] = { type: prop.type === "integer" ? "integer" : "number", ...base };
+        break;
+      case "boolean":
+        spec[key] = { type: "boolean", ...base };
+        break;
+      case "array":
+        spec[key] = { type: "json", ...base };
+        break;
+      case "object":
+        spec[key] = { type: "json", ...base };
+        break;
+      default:
+        spec[key] = { type: "json", ...base };
+    }
+  }
   return spec;
 }
 
 /**
- * Convert a single JSON Schema property to DSH ValueSchemaSpec.
- * @param {object} prop
- * @returns {object}
- */
-function jsonSchemaPropToSpec(prop) {
-  if (!prop || typeof prop !== "object") return { type: "json", description: "" };
-
-  const base = {
-    description: prop.description || "",
-    ...(prop.title ? { title: prop.title } : {}),
-    ...(prop.default !== undefined ? { default: prop.default } : {}),
-    ...(prop.examples ? { examples: prop.examples } : {}),
-  };
-
-  const type = prop.type;
-
-  if (type === "string") {
-    const result = { type: "string", ...base };
-    if (prop.enum) result.enum = prop.enum;
-    return result;
-  }
-  if (type === "number" || type === "integer") {
-    const result = { type: type === "integer" ? "integer" : "number", ...base };
-    if (prop.enum) result.enum = prop.enum;
-    return result;
-  }
-  if (type === "boolean") return { type: "boolean", ...base };
-  if (type === "null") return { type: "null", ...base };
-  if (type === "array") {
-    const result = { type: "array", ...base };
-    if (prop.items) result.items = jsonSchemaPropToSpec(prop.items);
-    return result;
-  }
-  if (type === "object") {
-    const result = { type: "object", additionalProperties: true, ...base };
-    if (prop.properties) {
-      result.properties = {};
-      for (const [k, v] of Object.entries(prop.properties)) {
-        result.properties[k] = jsonSchemaPropToSpec(v);
-      }
-    }
-    return result;
-  }
-
-  return { type: "json", ...base };
-}
-
-/**
  * Build a DSH tool definition for one MCP tool.
- * @param {string} serverId
- * @param {object} mcpTool - {name, description, inputSchema}
- * @param {import("./mcp-client.js").McpClientManager} clientManager
- * @returns {object} DSH ToolDefinition
  */
 function buildToolDefinition(serverId, mcpTool, clientManager) {
   const toolName = "mcp__" + serverId + "__" + mcpTool.name;
-  const parameters = jsonSchemaToParameterSpec(mcpTool.inputSchema);
+  const parameters = jsonSchemaToParameters(mcpTool.inputSchema);
 
   return defineTool({
     name: toolName,
     description: "[MCP:" + serverId + "] " + (mcpTool.description || mcpTool.name),
     parameters,
     output: {
-      schema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          ok: { type: "boolean", required: true },
-          content: {
-            type: "array",
-            items: { type: "object", additionalProperties: true },
-          },
-          error: { type: "string" },
-          serverId: { type: "string", required: true },
-          toolName: { type: "string", required: true },
-        },
-      },
+      // Use 'json' type - accepts any lossless JSON value
+      schema: { type: "json", description: "MCP tool result" },
       render: (_args, value) => {
-        if (!value.ok) {
+        // value is the raw JSON returned by execute
+        if (!value || typeof value !== "object") {
+          return [{ type: "text", text: String(value || "(empty)") }];
+        }
+        if (value.error) {
           return [{ type: "text", text: "[MCP error] " + value.error }];
         }
-        const blocks = (value.content || []).map((block) => {
-          if (block.type === "text") return { type: "text", text: block.text };
-          if (block.type === "image") return { type: "text", text: "[image: " + block.mimeType + "]" };
-          return { type: "text", text: JSON.stringify(block, null, 2) };
-        });
-        return blocks.length > 0 ? blocks : [{ type: "text", text: "(empty result)" }];
+        // Extract text content from MCP response
+        const content = value.content;
+        if (Array.isArray(content)) {
+          return content.map((block) => {
+            if (block && block.type === "text") return { type: "text", text: String(block.text || "") };
+            if (block && block.type === "image") return { type: "text", text: "[image: " + (block.mimeType || "unknown") + "]" };
+            return { type: "text", text: JSON.stringify(block) };
+          });
+        }
+        return [{ type: "text", text: JSON.stringify(value, null, 2) }];
       },
     },
     async execute(args) {
+      // Extract tool args (skip DSH meta fields)
       const toolArgs = {};
       for (const [k, v] of Object.entries(args)) {
         if (k !== "sandbox_permissions" && k !== "justification") {
@@ -135,23 +91,30 @@ function buildToolDefinition(serverId, mcpTool, clientManager) {
       }
 
       const result = await clientManager.callTool(serverId, mcpTool.name, toolArgs);
-      return {
-        ok: result.ok,
-        content: result.ok ? (result.result?.content || []) : [],
-        error: result.error || undefined,
-        serverId,
-        toolName: mcpTool.name,
-      };
+      
+      // Return plain JSON-serializable value
+      if (!result.ok) {
+        return { error: result.error || "unknown error" };
+      }
+      
+      // Normalize MCP content to plain JSON
+      const mcpResult = result.result;
+      const safeContent = Array.isArray(mcpResult?.content)
+        ? mcpResult.content.map((block) => {
+            if (!block || typeof block !== "object") return { type: "text", text: String(block || "") };
+            if (block.type === "text") return { type: "text", text: String(block.text || "") };
+            if (block.type === "image") return { type: "image", mimeType: String(block.mimeType || ""), data: String(block.data || "") };
+            return { type: "text", text: JSON.stringify(block) };
+          })
+        : [];
+      
+      return { content: safeContent };
     },
   });
 }
 
 /**
- * Register all discovered MCP tools into DSH tool registry.
- * @param {object} ctx - DSH context with ctx.tools
- * @param {import("./mcp-client.js").McpClientManager} clientManager
- * @param {function} logger
- * @returns {{registered: string[], disposers: function[]}}
+ * Register all MCP tools into DSH.
  */
 export function registerMcpTools(ctx, clientManager, logger) {
   const registered = [];
@@ -174,113 +137,76 @@ export function registerMcpTools(ctx, clientManager, logger) {
 }
 
 /**
- * Register the meta mcp_call tool for dynamic invocation.
- * @param {object} ctx
- * @param {import("./mcp-client.js").McpClientManager} clientManager
- * @returns {function} disposer
+ * Register the meta mcp_call tool.
  */
 export function registerMcpCallTool(ctx, clientManager) {
   return ctx.tools.register(defineTool({
     name: "mcp_call",
     description: "Call a tool on a connected MCP server. Use mcp_list_tools first to discover available tools.",
     parameters: {
-      server: {
-        type: "string",
-        required: true,
-        description: "MCP server id (e.g. 'cursor_web-search', 'codex_fetch')",
-      },
-      tool: {
-        type: "string",
-        required: true,
-        description: "Tool name on the MCP server",
-      },
-      args: {
-        type: "json",
-        description: "Tool arguments as a JSON object (default: {})",
-      },
+      server: { type: "string", required: true, description: "MCP server id" },
+      tool: { type: "string", required: true, description: "Tool name on the MCP server" },
+      args: { type: "json", description: "Tool arguments as JSON (default: {})" },
     },
     output: {
-      schema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          ok: { type: "boolean", required: true },
-          content: {
-            type: "array",
-            items: { type: "object", additionalProperties: true },
-          },
-          error: { type: "string" },
-        },
-      },
+      schema: { type: "json" },
       render: (_args, value) => {
-        if (!value.ok) {
-          return [{ type: "text", text: "[MCP error] " + value.error }];
+        if (!value || typeof value !== "object") return [{ type: "text", text: String(value || "(empty)") }];
+        if (value.error) return [{ type: "text", text: "[MCP error] " + value.error }];
+        const content = value.content;
+        if (Array.isArray(content)) {
+          return content.map((b) => {
+            if (b?.type === "text") return { type: "text", text: String(b.text || "") };
+            return { type: "text", text: JSON.stringify(b) };
+          });
         }
-        const blocks = (value.content || []).map((block) => {
-          if (block.type === "text") return { type: "text", text: block.text };
-          return { type: "text", text: JSON.stringify(block, null, 2) };
-        });
-        return blocks.length > 0 ? blocks : [{ type: "text", text: "(empty result)" }];
+        return [{ type: "text", text: JSON.stringify(value, null, 2) }];
       },
     },
     async execute(args) {
       const result = await clientManager.callTool(args.server, args.tool, args.args || {});
-      return {
-        ok: result.ok,
-        content: result.ok ? (result.result?.content || []) : [],
-        error: result.error || undefined,
-      };
+      if (!result.ok) return { error: result.error || "unknown error" };
+      const mcpResult = result.result;
+      const safeContent = Array.isArray(mcpResult?.content)
+        ? mcpResult.content.map((b) => {
+            if (b?.type === "text") return { type: "text", text: String(b.text || "") };
+            return { type: "text", text: JSON.stringify(b) };
+          })
+        : [];
+      return { content: safeContent };
     },
   }));
 }
 
 /**
- * Register the meta mcp_list_tools tool for discovery.
- * @param {object} ctx
- * @param {import("./mcp-client.js").McpClientManager} clientManager
- * @returns {function} disposer
+ * Register the meta mcp_list_tools tool.
  */
 export function registerMcpListTools(ctx, clientManager) {
   return ctx.tools.register(defineTool({
     name: "mcp_list_tools",
-    description: "List all available MCP tools across connected servers. Use this to discover what MCP tools you can call.",
+    description: "List all available MCP tools across connected servers.",
     parameters: {
-      server: {
-        type: "string",
-        description: "Filter by server id (omit to list all)",
-      },
+      server: { type: "string", description: "Filter by server id (omit to list all)" },
     },
     output: {
-      schema: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          servers: {
-            type: "array",
-            items: { type: "object", additionalProperties: true },
-          },
-          totalTools: { type: "number", required: true },
-        },
-      },
+      schema: { type: "json" },
       render: (_args, value) => {
+        if (!value?.servers) return [{ type: "text", text: "No servers connected." }];
         const lines = [];
         for (const s of value.servers) {
-          lines.push("## " + s.id + " (" + s.state + ") \u2014 " + s.tools.length + " tools");
+          lines.push("## " + s.id + " (" + s.state + ") - " + s.tools.length + " tools");
           for (const t of s.tools) {
-            lines.push("- **" + t.name + "**: " + (t.description || "(no description)"));
+            lines.push("- " + t.name + ": " + (t.description || "").substring(0, 80));
           }
           lines.push("");
         }
-        return [{ type: "text", text: lines.join("\n") || "No MCP servers connected." }];
+        return [{ type: "text", text: lines.join("\n") }];
       },
     },
     async execute(args) {
       if (args.server) {
         const tools = clientManager.getTools(args.server);
-        return {
-          servers: [{ id: args.server, state: "connected", tools }],
-          totalTools: tools.length,
-        };
+        return { servers: [{ id: args.server, state: "connected", tools }], totalTools: tools.length };
       }
       return clientManager.listServers();
     },
