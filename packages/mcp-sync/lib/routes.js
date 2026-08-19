@@ -1,12 +1,17 @@
 /**
  * dsh-mcp-sync routes: the /api/dsh-mcp-sync family.
  *
- *   GET    /api/dsh-mcp-sync/status    source availability + counts
- *   GET    /api/dsh-mcp-sync/servers   deduped MCP server list
- *   GET    /api/dsh-mcp-sync/config    raw config from each source
- *   GET    /api/dsh-mcp-sync/custom    list custom MCP servers
- *   POST   /api/dsh-mcp-sync/custom    add custom MCP server
- *   DELETE /api/dsh-mcp-sync/custom    delete custom MCP server
+ *   GET    /api/dsh-mcp-sync/status       source availability + connection status
+ *   GET    /api/dsh-mcp-sync/servers       deduped MCP server list
+ *   GET    /api/dsh-mcp-sync/config        raw config from each source
+ *   GET    /api/dsh-mcp-sync/custom        list custom MCP servers
+ *   POST   /api/dsh-mcp-sync/custom        add custom MCP server
+ *   DELETE /api/dsh-mcp-sync/custom        delete custom MCP server
+ *   GET    /api/dsh-mcp-sync/connections   MCP client connection status
+ *   POST   /api/dsh-mcp-sync/connect       connect to a specific MCP server
+ *   POST   /api/dsh-mcp-sync/disconnect    disconnect from a specific MCP server
+ *   GET    /api/dsh-mcp-sync/tools         list all MCP tools across connected servers
+ *   POST   /api/dsh-mcp-sync/call          call an MCP tool directly
  *
  * Every route is loopback-only: MCP configs may contain secrets.
  */
@@ -18,6 +23,11 @@ const API = {
   servers: "/api/dsh-mcp-sync/servers",
   config: "/api/dsh-mcp-sync/config",
   custom: "/api/dsh-mcp-sync/custom",
+  connections: "/api/dsh-mcp-sync/connections",
+  connect: "/api/dsh-mcp-sync/connect",
+  disconnect: "/api/dsh-mcp-sync/disconnect",
+  tools: "/api/dsh-mcp-sync/tools",
+  call: "/api/dsh-mcp-sync/call",
 };
 
 /* ─────────────── loopback trust fence ─────────────── */
@@ -70,7 +80,6 @@ function query(url, name) {
   return v === null ? undefined : v;
 }
 
-/** Read POST body as JSON. */
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -88,10 +97,6 @@ function readBody(req) {
 
 /* ─────────────── custom MCP storage ─────────────── */
 
-/**
- * Custom MCP servers are stored in ~/.dsh/mcp-sync/custom.json
- * Format: { "server-name": { type, command, args, env, url }, ... }
- */
 function getCustomPath(home) {
   return join(home, ".dsh", "mcp-sync", "custom.json");
 }
@@ -99,8 +104,7 @@ function getCustomPath(home) {
 function readCustomServers(home) {
   const path = getCustomPath(home);
   try {
-    const content = readFileSync(path, "utf8");
-    return JSON.parse(content);
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return {};
   }
@@ -109,9 +113,7 @@ function readCustomServers(home) {
 function writeCustomServers(home, servers) {
   const path = getCustomPath(home);
   const dir = dirname(path);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   writeFileSync(path, JSON.stringify(servers, null, 2), "utf8");
 }
 
@@ -119,10 +121,10 @@ function writeCustomServers(home, servers) {
 
 /**
  * Build the route family.
- * @param {{sources: import("./sources.js").McpSources, config: object}} deps
+ * @param {{sources: import("./sources.js").McpSources, config: object, clientManager: import("./mcp-client.js").McpClientManager}} deps
  */
 export function makeRoutes(deps) {
-  const { sources, config } = deps;
+  const { sources, config, clientManager } = deps;
 
   const guard = (req, res) => {
     if (!isLoopbackRequest(req)) {
@@ -133,18 +135,23 @@ export function makeRoutes(deps) {
   };
 
   const routes = [
+    /* ── GET /status ── */
     {
       kind: "exact",
       path: API.status,
       handler: (req, res) => {
         if (req.method !== "GET" || !guard(req, res)) return;
         try {
-          writeJson(res, 200, sources.status());
+          const sourceStatus = sources.status();
+          const connStatus = clientManager ? clientManager.getStatus() : {};
+          writeJson(res, 200, { ...sourceStatus, connections: connStatus });
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
         }
       },
     },
+
+    /* ── GET /servers ── */
     {
       kind: "exact",
       path: API.servers,
@@ -155,7 +162,6 @@ export function makeRoutes(deps) {
           const source = query(url, "source");
           const result = sources.scan();
 
-          // Add custom servers
           const customServers = readCustomServers(sources.home);
           const customList = Object.entries(customServers).map(([name, cfg]) => ({
             name,
@@ -166,22 +172,19 @@ export function makeRoutes(deps) {
             env: cfg.env || {},
             url: cfg.url || "",
             fingerprint: cfg.type === "stdio"
-              ? `${cfg.command} ${(cfg.args || []).join(" ")}`
+              ? cfg.command + " " + (cfg.args || []).join(" ")
               : cfg.url || "",
           }));
 
-          // Merge with scanned servers
           result.servers = [...result.servers, ...customList];
           result.bySource.custom = customList.length;
           result.total = result.servers.length;
 
-          // Dedup custom servers too
           if (sources.dedupeByCommand) {
             result.servers = sources.dedupeServers(result.servers);
             result.total = result.servers.length;
           }
 
-          // Filter by source if requested
           if (source && source !== "all") {
             result.servers = result.servers.filter((s) =>
               s.source === source || (s.sources && s.sources.includes(source))
@@ -195,6 +198,8 @@ export function makeRoutes(deps) {
         }
       },
     },
+
+    /* ── GET /config ── */
     {
       kind: "exact",
       path: API.config,
@@ -203,30 +208,27 @@ export function makeRoutes(deps) {
         try {
           const url = new URL(req.url ?? "/", "http://localhost");
           const source = query(url, "source");
-
           const configs = {};
-          for (const src of ["claude", "codex", "cursor"]) {
+
+          for (const src of ["claude", "codex", "cursor", "dsh"]) {
             if (source && source !== "all" && source !== src) continue;
-            const configPath = src === "codex"
-              ? join(sources.home, ".codex", "config.toml")
-              : src === "claude"
-                ? join(sources.home, ".claude", "claude_desktop_config.json")
-                : join(sources.home, ".cursor", "mcp.json");
+            let configPath;
+            if (src === "codex") configPath = join(sources.home, ".codex", "config.toml");
+            else if (src === "claude") configPath = join(sources.home, ".claude", "claude_desktop_config.json");
+            else if (src === "cursor") configPath = join(sources.home, ".cursor", "mcp.json");
+            else configPath = join(sources.home, ".dsh", "mcp.json");
 
             try {
-              const content = readFileSync(configPath, "utf8");
-              configs[src] = { path: configPath, content };
+              configs[src] = { path: configPath, content: readFileSync(configPath, "utf8") };
             } catch {
               configs[src] = { path: configPath, content: null, error: "file not found" };
             }
           }
 
-          // Include custom config
           if (!source || source === "all" || source === "custom") {
             const customPath = getCustomPath(sources.home);
             try {
-              const content = readFileSync(customPath, "utf8");
-              configs.custom = { path: customPath, content };
+              configs.custom = { path: customPath, content: readFileSync(customPath, "utf8") };
             } catch {
               configs.custom = { path: customPath, content: "{}" };
             }
@@ -238,23 +240,22 @@ export function makeRoutes(deps) {
         }
       },
     },
+
+    /* ── GET/POST/DELETE /custom ── */
     {
       kind: "exact",
       path: API.custom,
       handler: async (req, res) => {
         if (!guard(req, res)) return;
-
         try {
           if (req.method === "GET") {
-            const servers = readCustomServers(sources.home);
-            writeJson(res, 200, { servers });
+            writeJson(res, 200, { servers: readCustomServers(sources.home) });
           } else if (req.method === "POST") {
             const body = await readBody(req);
             if (!body.name || !body.config) {
               writeJson(res, 400, { error: "name and config are required" });
               return;
             }
-
             const servers = readCustomServers(sources.home);
             servers[body.name] = body.config;
             writeCustomServers(sources.home, servers);
@@ -262,23 +263,103 @@ export function makeRoutes(deps) {
           } else if (req.method === "DELETE") {
             const url = new URL(req.url ?? "/", "http://localhost");
             const name = query(url, "name");
-            if (!name) {
-              writeJson(res, 400, { error: "name is required" });
-              return;
-            }
-
+            if (!name) { writeJson(res, 400, { error: "name is required" }); return; }
             const servers = readCustomServers(sources.home);
-            if (!(name in servers)) {
-              writeJson(res, 404, { error: "not found" });
-              return;
-            }
-
+            if (!(name in servers)) { writeJson(res, 404, { error: "not found" }); return; }
             delete servers[name];
             writeCustomServers(sources.home, servers);
             writeJson(res, 200, { ok: true });
           } else {
             writeJson(res, 405, { error: "method not allowed" });
           }
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── GET /connections ── */
+    {
+      kind: "exact",
+      path: API.connections,
+      handler: (req, res) => {
+        if (req.method !== "GET" || !guard(req, res)) return;
+        try {
+          const status = clientManager.getStatus();
+          const servers = clientManager.listServers();
+          writeJson(res, 200, { status, servers });
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── POST /connect ── */
+    {
+      kind: "exact",
+      path: API.connect,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res)) return;
+        try {
+          const body = await readBody(req);
+          if (!body.id || !body.config) {
+            writeJson(res, 400, { error: "id and config are required" });
+            return;
+          }
+          const result = await clientManager.connect(body.id, body.config);
+          writeJson(res, 200, result);
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── POST /disconnect ── */
+    {
+      kind: "exact",
+      path: API.disconnect,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res)) return;
+        try {
+          const body = await readBody(req);
+          if (!body.id) { writeJson(res, 400, { error: "id is required" }); return; }
+          await clientManager.disconnect(body.id);
+          writeJson(res, 200, { ok: true });
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── GET /tools ── */
+    {
+      kind: "exact",
+      path: API.tools,
+      handler: (req, res) => {
+        if (req.method !== "GET" || !guard(req, res)) return;
+        try {
+          const servers = clientManager.listServers();
+          writeJson(res, 200, servers);
+        } catch (error) {
+          writeJson(res, 500, { error: String(error?.message || error) });
+        }
+      },
+    },
+
+    /* ── POST /call ── */
+    {
+      kind: "exact",
+      path: API.call,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res)) return;
+        try {
+          const body = await readBody(req);
+          if (!body.server || !body.tool) {
+            writeJson(res, 400, { error: "server and tool are required" });
+            return;
+          }
+          const result = await clientManager.callTool(body.server, body.tool, body.args || {});
+          writeJson(res, 200, result);
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
         }

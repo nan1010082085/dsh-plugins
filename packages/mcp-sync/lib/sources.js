@@ -16,6 +16,7 @@ export const SOURCES = [
   { id: "claude", label: "Claude Code", configPath: (home) => join(home, ".claude", "claude_desktop_config.json") },
   { id: "cursor", label: "Cursor Agent", configPath: (home) => join(home, ".cursor", "mcp.json") },
   { id: "codex", label: "Codex CLI", configPath: (home) => join(home, ".codex", "config.toml") },
+  { id: "dsh", label: "DSH", configPath: (home) => join(home, ".dsh", "mcp.json") },
 ];
 
 /* ───────────────────────── small helpers ───────────────────────── */
@@ -209,6 +210,7 @@ export class McpSources {
         claude: all.filter((s) => s.source === "claude").length,
         codex: all.filter((s) => s.source === "codex").length,
         cursor: all.filter((s) => s.source === "cursor").length,
+        dsh: all.filter((s) => s.source === "dsh").length,
       },
       timestamps,
       scannedAt: this.scannedAt,

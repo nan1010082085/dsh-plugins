@@ -1,6 +1,6 @@
 {
   "name": "dsh-chat-sync",
-  "version": "0.1.9",
+  "version": "0.2.1",
   "description": "DSH plugin: browse and live-sync local AI CLI conversations (Claude Code, Codex CLI, Cursor Agent) inside the dsh web GUI",
   "type": "module",
   "main": "lib/index.js",
@@ -44,9 +44,8 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "dsh-better-sidebar"
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
     }

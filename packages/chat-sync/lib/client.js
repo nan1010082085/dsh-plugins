@@ -336,42 +336,39 @@ window.__ModuleLoader__.load({
 			);
 		}
 
+		/* ───────────── locale ───────────── */
+
+		const NS = "settings.chatSync";
+
+		const zh = {
+			nav: "对话同步",
+		};
+
+		const en = {
+			nav: "Chat Sync",
+		};
+
 		/* ───────────── plugin entry ───────────── */
 
-		const inject = ["betterSidebar"];
+		const inject = ["slots", "locale"];
 
 		function apply(ctx) {
+			console.log("[chat-sync] 客户端初始化");
 			injectStyles();
-
-			// Register tab in dsh-better-sidebar
-			const dispose = ctx.betterSidebar.registerTab({
+			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "chat-sync: dictionaries");
+			const t = ctx.locale.bind(NS);
+			ctx.slots.inject("settings.section", () => ctx.slots.register({
+				name: "settings.section",
 				id: "chat-sync",
-				title: () => "对话同步",
-				icon: (size) => h("svg", {
-					viewBox: "0 0 16 16",
-					width: size,
-					height: size,
-					fill: "none",
-					stroke: "currentColor",
-					strokeWidth: 1.3,
-					strokeLinecap: "round",
-					strokeLinejoin: "round",
-				},
-					h("path", { d: "M2.5 3.5h11v9h-11z" }),
-					h("path", { d: "M2.5 6h11" }),
-					h("path", { d: "M4.5 8.5h4" }),
-					h("path", { d: "M4.5 10.5h2.5" }),
-				),
-				order: 30,
-				single: true,
-				component: () => h(ChatSyncTree),
-			});
-
-			ctx.effect(() => () => {
-				dispose();
-			}, "dsh-chat-sync: sidebar tab");
+				order: 35,
+				label: () => t("nav"),
+				locale: NS,
+				inject: () => ({}),
+			}, ChatSyncTree));
+			console.log("[chat-sync] 设置页注册完成");
 		}
 
+		exports.NS = NS;
 		exports.apply = apply;
 		exports.inject = inject;
 		return module.exports;

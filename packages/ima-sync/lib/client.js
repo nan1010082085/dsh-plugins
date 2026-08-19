@@ -414,6 +414,7 @@ window.__ModuleLoader__.load({
 		const inject = ["slots", "locale"];
 
 		function apply(ctx) {
+			console.log("[ima-sync] 客户端初始化");
 			injectStyles();
 			ctx.effect(() => ctx.locale.register(NS, { zh, en }), "ima-sync: dictionaries");
 			const t = ctx.locale.bind(NS);
@@ -425,6 +426,7 @@ window.__ModuleLoader__.load({
 				locale: NS,
 				inject: () => ({}),
 			}, ImaSyncSettings));
+			console.log("[ima-sync] 设置页注册完成");
 		}
 
 		exports.NS = NS;

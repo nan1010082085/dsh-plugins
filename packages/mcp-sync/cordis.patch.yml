@@ -21,9 +21,12 @@
       config:
         enabled: true
         autoSync: true
+        autoConnect: true
         syncInterval: 60000
         dedupeByCommand: true
+        registerTools: true
         sources:
           claude: true
           codex: true
           cursor: true
+          dsh: true

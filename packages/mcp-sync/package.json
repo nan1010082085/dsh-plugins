@@ -1,7 +1,7 @@
 {
   "name": "dsh-mcp-sync",
-  "version": "0.1.7",
-  "description": "DSH plugin: sync MCP configs from Claude Code, Codex CLI, and Cursor Agent with dedup and management",
+  "version": "0.3.1",
+  "description": "DSH plugin: connect to MCP servers, discover tools, and register them for direct model invocation",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -28,10 +28,13 @@
     "claude-code",
     "codex",
     "cursor",
-    "model-context-protocol"
+    "model-context-protocol",
+    "mcp-client",
+    "tool-registration"
   ],
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.0"
+    "@deepseek-ai/schemastery": "^3.18.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "dsh": {
     "bundle": {
@@ -40,9 +43,8 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "dsh-better-sidebar"
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
     }
