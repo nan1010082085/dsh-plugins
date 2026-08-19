@@ -1,19 +1,21 @@
 /**
  * dsh-chat-sync - host half.
  *
- * 将本地 AI CLI 对话（Claude Code / Codex CLI / Cursor Agent）同步到工作区目录。
- * 监听源目录变化，自动复制新的对话文件到工作区。
+ * 将本地 AI CLI 对话（Claude Code / Codex CLI / Cursor Agent）同步到工作区目录，
+ * 并可选自动导入为 DSH 会话。
  */
 import z from "@deepseek-ai/schemastery";
+import { join } from "node:path";
 import { ChatSources } from "./sources.js";
 import { makeRoutes } from "./routes.js";
 import { WorkspaceSync } from "./workspace-sync.js";
+import { AutoImporter } from "./auto-import.js";
 
 /** Stable cordis plugin name. */
 export const name = "chat-sync";
 
-/** Requires the web server service (routes + SSE). */
-export const inject = ["webServer"];
+/** Requires web server + api proxy for session/workspace management. */
+export const inject = ["webServer", "apiProxy"];
 
 /** Plugin config schema. */
 export const Config = z.object({
@@ -35,11 +37,17 @@ export const Config = z.object({
   titleHeadBytes: z.number().step(1).min(4096).default(65536),
   /** 工作区同步目标目录（相对路径基于当前工作目录） */
   workspaceDir: z.string().default(".chat-sync"),
-  /** 是否同步到工作区 */
+  /** 是否同步到工作区（文件复制） */
   syncToWorkspace: z.boolean().default(true),
+  /** 是否自动导入为 DSH 会话 */
+  autoImport: z.boolean().default(true),
+  /** 自动导入扫描间隔（ms） */
+  autoImportIntervalMs: z.number().step(1).min(10000).default(60000),
+  /** 导入上下文最大字符数 */
+  maxImportChars: z.number().step(1).min(1000).default(50000),
 });
 
-/** Resolve raw config with defaults (robust to unvalidated config objects). */
+/** Resolve raw config with defaults. */
 function resolve(config) {
   const c = config && typeof config === "object" ? config : {};
   return {
@@ -53,13 +61,14 @@ function resolve(config) {
     titleHeadBytes: c.titleHeadBytes ?? 65536,
     workspaceDir: c.workspaceDir ?? ".chat-sync",
     syncToWorkspace: c.syncToWorkspace ?? true,
+    autoImport: c.autoImport ?? true,
+    autoImportIntervalMs: c.autoImportIntervalMs ?? 60000,
+    maxImportChars: c.maxImportChars ?? 50000,
   };
 }
 
 /**
- * Mount the scanner, routes, and the live hub.
- * @param {import("@deepseek-ai/cordis").Context} ctx - host context with webServer.
- * @param {object} [config] - plugin config (schema defaults applied by the loader).
+ * Mount the scanner, routes, live hub, and auto-importer.
  */
 export function apply(ctx, config) {
   const opts = resolve(config);
@@ -68,7 +77,7 @@ export function apply(ctx, config) {
     return;
   }
 
-  ctx.logger.info(`[chat-sync] 初始化 | watch=${opts.watch} | syncToWorkspace=${opts.syncToWorkspace} | workspaceDir=${opts.workspaceDir}`);
+  ctx.logger.info(`[chat-sync] 初始化 | watch=${opts.watch} | syncToWorkspace=${opts.syncToWorkspace} | autoImport=${opts.autoImport}`);
 
   const sources = new ChatSources({
     maxSessions: opts.maxSessions,
@@ -78,7 +87,7 @@ export function apply(ctx, config) {
   });
   const engine = makeRoutes({ sources, config: opts });
 
-  // 工作区同步器
+  // 工作区同步器（文件复制）
   let workspaceSync = null;
   if (opts.syncToWorkspace) {
     workspaceSync = new WorkspaceSync({
@@ -88,9 +97,21 @@ export function apply(ctx, config) {
     });
   }
 
+  // 自动导入器（创建 DSH 会话）
+  let autoImporter = null;
+  if (opts.autoImport) {
+    autoImporter = new AutoImporter({
+      sources,
+      apiProxy: ctx.apiProxy,
+      logger: ctx.logger,
+      maxImportChars: opts.maxImportChars,
+      importStateFile: join(opts.workspaceDir, "imported.json"),
+    });
+  }
+
   ctx.effect(() => {
-    // Warm the scan cache off the boot path; later scans are incremental.
-    const warm = setTimeout(() => {
+    // Warm the scan cache off the boot path
+    const warm = setTimeout(async () => {
       try {
         sources.scan();
         ctx.logger.info(`[chat-sync] 初始扫描完成`);
@@ -100,19 +121,42 @@ export function apply(ctx, config) {
           workspaceSync.start();
           ctx.logger.info(`[chat-sync] 工作区同步已启动 | target=${opts.workspaceDir}`);
         }
+
+        // 启动自动导入
+        if (autoImporter) {
+          await autoImporter.start();
+          ctx.logger.info(`[chat-sync] 自动导入已启动 | interval=${opts.autoImportIntervalMs}ms`);
+        }
       } catch (error) {
-        ctx.logger.warn(`[chat-sync] 初始扫描失败: ${error?.message || error}`);
+        ctx.logger.warn(`[chat-sync] 初始化失败: ${error?.message || error}`);
       }
     }, 100);
+
     engine.start();
     ctx.logger.info(`[chat-sync] 实时同步已启动 | routes=${engine.routes.length}`);
+
     const disposers = engine.routes.map((route) => ctx.webServer.register(route));
+
+    // 定期扫描导入
+    let importTimer = null;
+    if (autoImporter) {
+      importTimer = setInterval(async () => {
+        try {
+          await autoImporter.scanAndImport();
+        } catch (error) {
+          ctx.logger.warn(`[chat-sync] 自动导入失败: ${error?.message}`);
+        }
+      }, opts.autoImportIntervalMs);
+    }
+
     return () => {
       clearTimeout(warm);
+      if (importTimer) clearInterval(importTimer);
       for (const dispose of disposers) dispose();
       engine.dispose();
       if (workspaceSync) workspaceSync.stop();
+      if (autoImporter) autoImporter.stop();
       ctx.logger.info("[chat-sync] 已卸载");
     };
-  }, "dsh-chat-sync: routes + live hub");
+  }, "dsh-chat-sync: routes + live hub + auto-import");
 }

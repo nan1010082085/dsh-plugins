@@ -2,7 +2,7 @@
 
 ## 插件概述
 
-将本地 Claude Code / Codex CLI / Cursor Agent 的对话同步到 DSH Web GUI。
+将本地 Claude Code / Codex CLI / Cursor Agent 的对话自动导入为真正的 DSH 会话。
 
 ## 安装（强制）
 
@@ -13,7 +13,7 @@ dsh plugin --profile web add dsh-chat-sync
 
 ## 发布流程（每次修改必须遵循）
 
-1. 修改 `lib/index.js`（服务端）或 `lib/client.js`（客户端）
+1. 修改代码（`lib/index.js`, `lib/auto-import.js`, `lib/client.js` 等）
 2. 更新 `package.json` 的 `version`
 3. `cd packages/chat-sync && npm publish`
 4. `dsh plugin --profile web add dsh-chat-sync`
@@ -23,9 +23,11 @@ dsh plugin --profile web add dsh-chat-sync
 
 | 文件 | 用途 |
 |------|------|
-| `lib/index.js` | 服务端：扫描器、路由注册、实时同步 |
+| `lib/index.js` | 服务端：扫描器、路由注册、自动导入 |
 | `lib/sources.js` | 数据源：Claude/Codex/Cursor 会话扫描 |
 | `lib/routes.js` | API 路由：会话列表、消息、SSE |
+| `lib/auto-import.js` | 自动导入：创建 DSH 会话 + 注入上下文 |
+| `lib/workspace-sync.js` | 工作区同步：文件复制到 .chat-sync |
 | `lib/client.js` | 客户端：侧边栏标签页、会话浏览面板 |
 | `lib/index.d.ts` | TypeScript 类型声明 |
 | `cordis.patch.yml` | Loader 注册补丁 |
@@ -34,10 +36,19 @@ dsh plugin --profile web add dsh-chat-sync
 ## 服务端规范（lib/index.js）
 
 - 导出：`{ name, inject, Config, apply }`
-- `inject = ["webServer"]`
+- `inject = ["webServer", "apiProxy"]`
 - 必须使用 `ctx.logger.info/warn` 输出日志
 - 日志格式：`[chat-sync] 消息内容`
-- 必须覆盖：初始化配置、扫描结果、路由注册、错误处理、卸载
+- 必须覆盖：初始化配置、扫描结果、路由注册、自动导入、错误处理、卸载
+
+## 自动导入规范（lib/auto-import.js）
+
+- 使用 `ctx.apiProxy.sessions.create()` 创建 DSH 会话
+- 使用 `ctx.apiProxy.workspace.list()` 和 `ctx.apiProxy.workspace.create()` 管理工作区
+- 使用 `ctx.apiProxy.sessions.rename()` 设置会话标题
+- 使用 `ctx.apiProxy.sessions.prompt()` 注入对话历史作为上下文
+- 导入状态保存在 `.chat-sync/imported.json`
+- 只导入最近 24 小时内有更新的会话
 
 ## 客户端规范（lib/client.js）
 

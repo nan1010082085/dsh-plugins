@@ -27,13 +27,8 @@ DSH（DeepSeek Harness）插件：**把 DSH 的对话进度自动上传到腾讯
 ## 安装
 
 ```sh
-# 从 GitHub 安装（独立仓库，已发布 npm）
-dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
-
-# 或从 npm 安装
+# 使用 dsh plugin 安装
 dsh plugin --profile web add dsh-plugin-ima-sync
-
-# 重启 dsh web 生效
 ```
 
 `dsh plugin` 会自动把声明了 `dsh.bundle` 的包追加到 profile 的 `dsh.profile.bundles`，无需手动改清单。

@@ -43,13 +43,8 @@ DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor A
 ## 安装
 
 ```sh
-# 从 GitHub 安装（独立仓库，已发布 npm）
-dsh plugin --profile web add github:nan1010082085/dsh-chat-sync
-
-# 或从 npm 安装
+# 使用 dsh plugin 安装
 dsh plugin --profile web add dsh-chat-sync
-
-# 重启 dsh web 生效
 ```
 
 ## 配置

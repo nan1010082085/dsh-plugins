@@ -1,7 +1,7 @@
 {
   "name": "dsh-chat-sync",
-  "version": "0.2.1",
-  "description": "DSH plugin: browse and live-sync local AI CLI conversations (Claude Code, Codex CLI, Cursor Agent) inside the dsh web GUI",
+  "version": "0.3.0",
+  "description": "DSH plugin: auto-import local AI CLI conversations (Claude Code, Codex CLI, Cursor Agent) as real DSH sessions",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",

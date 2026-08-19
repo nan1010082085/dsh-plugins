@@ -2,7 +2,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 
 export const name: "chat-sync";
-export const inject: string[];
+export const inject: ["webServer", "apiProxy"];
 export const Config: import("@deepseek-ai/schemastery").default<object>;
 export function apply(ctx: Context, config?: Record<string, unknown>): void;
 
