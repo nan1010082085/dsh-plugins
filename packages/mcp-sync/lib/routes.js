@@ -110,56 +110,36 @@ export function makeRoutes(deps) {
   };
 
   const routes = [
-    /* ── GET /registry - 列出所有注册的 MCP 服务器 ── */
-    {
-      kind: "exact",
-      path: API.registry,
-      handler: (req, res) => {
-        if (req.method !== "GET" || !guard(req, res)) return;
-        try {
-          const servers = listServers(home);
-          writeJson(res, 200, { servers, total: servers.length });
-        } catch (error) {
-          writeJson(res, 500, { error: String(error?.message || error) });
-        }
-      },
-    },
-
-    /* ── POST /registry - 添加/更新 MCP 服务器 ── */
+    /* ── /registry - MCP 服务器注册表（GET/POST/DELETE） ── */
     {
       kind: "exact",
       path: API.registry,
       handler: async (req, res) => {
-        if (req.method !== "POST" || !guard(req, res)) return;
+        if (!guard(req, res)) return;
         try {
-          const body = await readBody(req);
-          if (!body.name || !body.config) {
-            writeJson(res, 400, { error: "name and config are required" });
-            return;
+          if (req.method === "GET") {
+            const servers = listServers(home);
+            writeJson(res, 200, { servers, total: servers.length });
+          } else if (req.method === "POST") {
+            const body = await readBody(req);
+            if (!body.name || !body.config) {
+              writeJson(res, 400, { error: "name and config are required" });
+              return;
+            }
+            const result = upsertServer(body.name, body.config, home);
+            writeJson(res, 200, result);
+          } else if (req.method === "DELETE") {
+            const url = new URL(req.url ?? "/", "http://localhost");
+            const name = query(url, "name");
+            if (!name) {
+              writeJson(res, 400, { error: "name is required" });
+              return;
+            }
+            const result = removeServer(name, home);
+            writeJson(res, 200, result);
+          } else {
+            writeJson(res, 405, { error: "Method Not Allowed" });
           }
-          const result = upsertServer(body.name, body.config, home);
-          writeJson(res, 200, result);
-        } catch (error) {
-          writeJson(res, 500, { error: String(error?.message || error) });
-        }
-      },
-    },
-
-    /* ── DELETE /registry - 删除 MCP 服务器 ── */
-    {
-      kind: "exact",
-      path: API.registry,
-      handler: async (req, res) => {
-        if (req.method !== "DELETE" || !guard(req, res)) return;
-        try {
-          const url = new URL(req.url ?? "/", "http://localhost");
-          const name = query(url, "name");
-          if (!name) {
-            writeJson(res, 400, { error: "name is required" });
-            return;
-          }
-          const result = removeServer(name, home);
-          writeJson(res, 200, result);
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
         }
