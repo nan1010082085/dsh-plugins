@@ -126,6 +126,8 @@ window.__ModuleLoader__.load({
 			placeholderBin: "~/.local/bin/ima-upload",
 			placeholderProjects: "~/.config/ima/projects.json",
 			placeholderDefault: "留空使用目录名",
+			projects: "已检测项目",
+			projectsHint: "自动从 Claude 会话目录检测，无需手动维护",
 		};
 
 		const en = {
@@ -175,6 +177,8 @@ window.__ModuleLoader__.load({
 			placeholderBin: "~/.local/bin/ima-upload",
 			placeholderProjects: "~/.config/ima/projects.json",
 			placeholderDefault: "Leave empty to use directory name",
+			projects: "Detected Projects",
+			projectsHint: "Auto-detected from Claude session directories, no manual maintenance needed",
 		};
 
 		/* ───────────── config panel component ───────────── */
@@ -202,6 +206,7 @@ window.__ModuleLoader__.load({
 			const [saving, setSaving] = useState(false);
 			const [testing, setTesting] = useState(false);
 			const [status, setStatus] = useState(null);
+			const [projects, setProjects] = useState([]);
 			const [useManualOverride, setUseManualOverride] = useState(false);
 			const [newProjectName, setNewProjectName] = useState("");
 			const [newProjectKbId, setNewProjectKbId] = useState("");
@@ -209,9 +214,13 @@ window.__ModuleLoader__.load({
 			useEffect(() => {
 				(async () => {
 					try {
-						const data = await getJSON(API.config);
+						const [data, projData] = await Promise.all([
+							getJSON(API.config),
+							getJSON("/api/dsh-ima-sync/projects").catch(() => ({ projects: [] })),
+						]);
 						setConfig(data);
 						setUseManualOverride(!!(data.manualOverride?.clientId || data.manualOverride?.apiKey));
+						setProjects(projData.projects || []);
 					} catch (err) {
 						setStatus({ type: "error", message: t("loadError") + err.message });
 					} finally {
@@ -325,6 +334,21 @@ window.__ModuleLoader__.load({
 					h("div", { className: "ims-hint", style: { marginLeft: 24, marginTop: -2 } }, t("modeDailyDesc")),
 				),
 
+				// Detected Projects
+				projects.length > 0 ? h("div", { className: "ims-section" },
+					h("div", { className: "ims-sectionTitle" }, t("projects")),
+					h("div", { className: "ims-hint", style: { marginBottom: 8 } }, t("projectsHint")),
+					h("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+						projects.map((p, i) =>
+							h("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, fontSize: 13 } },
+								h("span", { style: { color: "var(--dsw-alias-label-primary)", fontWeight: 500 } }, p.name),
+								h("span", { style: { color: "var(--dsw-alias-label-secondary)", fontSize: 11 } }, p.path),
+								h("span", { style: { color: "var(--dsw-alias-label-tertiary)", fontSize: 10, padding: "1px 4px", borderRadius: 3, background: "var(--dsw-alias-bg-elevated)" } }, p.source),
+							)
+						),
+					),
+				) : null,
+
 				// Credentials
 				h("div", { className: "ims-section" },
 					h("div", { className: "ims-sectionTitle" }, t("credentials")),
@@ -385,15 +409,6 @@ window.__ModuleLoader__.load({
 				// Advanced
 				h("div", { className: "ims-section" },
 					h("div", { className: "ims-sectionTitle" }, t("advanced")),
-					h("div", { className: "ims-field" },
-						h("label", { className: "ims-label" }, t("imaUploadBin")),
-						h("input", { className: "ims-input", type: "text", placeholder: t("placeholderBin"), value: config.imaUploadBin, onChange: (e) => handleChange("imaUploadBin", e.target.value) }),
-						h("div", { className: "ims-hint" }, t("imaUploadBinHint")),
-					),
-					h("div", { className: "ims-field" },
-						h("label", { className: "ims-label" }, t("projectsFile")),
-						h("input", { className: "ims-input", type: "text", placeholder: t("placeholderProjects"), value: config.projectsFile, onChange: (e) => handleChange("projectsFile", e.target.value) }),
-					),
 					h("div", { className: "ims-field" },
 						h("label", { className: "ims-label" }, t("defaultProject")),
 						h("input", { className: "ims-input", type: "text", placeholder: t("placeholderDefault"), value: config.defaultProject, onChange: (e) => handleChange("defaultProject", e.target.value) }),

@@ -94,8 +94,8 @@ function resolveConfig(config) {
     apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
     workKbId: manualOverride.workKbId || base.workKbId || "",
     projectKnowledgeBases: base.projectKnowledgeBases || {},
-    imaUploadBin: base.imaUploadBin || path.join(HOME, ".local/bin/ima-upload"),
-    projectsFile: base.projectsFile || path.join(HOME, ".config/ima/projects.json"),
+    imaUploadBin: base.imaUploadBin || "",  // 默认不用本地脚本，直接走 API
+    projectsFile: base.projectsFile || "",  // 默认自动检测，不依赖手动文件
     cacheDir: base.cacheDir || path.join(HOME, ".cache/ima/daily-notes"),
     defaultProject: base.defaultProject || "",
     maxPromptLength: base.maxPromptLength ?? 300,
@@ -798,6 +798,48 @@ function apply(ctx, config) {
           writeJson(res, 200, { success: true, message: "连接成功" });
         } catch (err) {
           writeJson(res, 200, { success: false, message: "连接失败: " + err.message });
+        }
+      },
+    },
+    {
+      name: "ima-sync:projects",
+      path: "/api/dsh-ima-sync/projects",
+      handler: async (req, res) => {
+        if (!isLoopbackRequest(req)) {
+          writeJson(res, 403, { error: "loopback only" });
+          return;
+        }
+        if (req.method === "GET") {
+          try {
+            // 从 Claude 会话目录自动检测项目
+            const claudeDir = path.join(HOME, ".claude", "projects");
+            const projects = [];
+            if (existsSync(claudeDir)) {
+              const entries = readdirSync(claudeDir, { withFileTypes: true });
+              for (const entry of entries) {
+                if (!entry.isDirectory()) continue;
+                const decoded = "/" + entry.name.replace(/^-/, "").replace(/-/g, "/");
+                if (!existsSync(decoded)) continue;
+                const name = path.basename(decoded).split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                projects.push({ path: decoded, name, source: "claude" });
+              }
+            }
+            // 从 projects.json 补充手动映射
+            if (cfg.projectsFile && existsSync(cfg.projectsFile)) {
+              try {
+                const map = JSON.parse(readFileSync(cfg.projectsFile, "utf8"));
+                for (const [p, name] of Object.entries(map)) {
+                  if (!projects.some(pr => pr.path === p)) {
+                    projects.push({ path: p, name, source: "manual" });
+                  }
+                }
+              } catch {}
+            }
+            projects.sort((a, b) => a.name.localeCompare(b.name));
+            writeJson(res, 200, { projects, total: projects.length });
+          } catch (err) {
+            writeJson(res, 500, { error: err.message });
+          }
         }
       },
     },
