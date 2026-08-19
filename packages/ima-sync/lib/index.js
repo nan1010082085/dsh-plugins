@@ -16,7 +16,7 @@
 import z from "@deepseek-ai/schemastery";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -104,67 +104,14 @@ function resolveConfig(config) {
   };
 }
 
-/** 最长路径前缀匹配 cwd -> 项目名。优先 projects.json 手动映射，其次自动检测。 */
-function resolveProjectName(cwd, projectsFile, fallback) {
-  // 1. 尝试 projects.json 手动映射
-  try {
-    const map = JSON.parse(readFileSync(projectsFile, "utf8"));
-    const matched = Object.entries(map)
-      .filter(([key]) => cwd === key || cwd.startsWith(key.endsWith("/") ? key : key + "/"))
-      .sort((a, b) => b[0].length - a[0].length);
-    if (matched.length > 0) return matched[0][1];
-  } catch {
-    /* 映射文件缺失/损坏时跳过 */
-  }
-
-  // 2. 自动检测：从 Claude 会话目录反推项目名
-  if (cwd) {
-    const claudeProject = detectProjectFromClaude(cwd);
-    if (claudeProject) return claudeProject;
-  }
-
-  // 3. 兜底：目录名
-  return fallback || (cwd ? path.basename(cwd) : "DSH");
-}
-
-/** 从 Claude 会话目录自动检测项目名。
- *  Claude 项目目录格式：`~/.claude/projects/<encoded-path>/`
- *  encoded-path = cwd 的绝对路径，把 `/` 替换为 `-`（前导 `-` 保留）。
- *  反向匹配：把 cwd 编码后直接查找对应目录。
+/** 从 DSH 会话的工作区路径解析项目名。
+ *  直接取 cwd 的目录名作为项目名，支持 Title Case 转换。
  */
-function detectProjectFromClaude(cwd) {
-  try {
-    const claudeProjectsDir = path.join(HOME, ".claude", "projects");
-    if (!existsSync(claudeProjectsDir)) return null;
-
-    // 精确匹配：cwd 编码后直接查找
-    const encoded = cwd.replace(/\//g, "-");
-    if (existsSync(path.join(claudeProjectsDir, encoded))) {
-      return path.basename(cwd).split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-    }
-
-    // 前缀匹配：遍历所有项目目录，找最长匹配
-    const entries = readdirSync(claudeProjectsDir, { withFileTypes: true });
-    const candidates = [];
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      // 解码目录名 -> 原始路径
-      const decoded = "/" + entry.name.replace(/^-/, "").replace(/-/g, "/");
-      // 验证解码后的路径是否存在（排除误匹配）
-      if (!existsSync(decoded)) continue;
-      if (cwd === decoded || cwd.startsWith(decoded + "/")) {
-        candidates.push({ decoded, name: path.basename(decoded) });
-      }
-    }
-    candidates.sort((a, b) => b.decoded.length - a.decoded.length);
-    if (candidates.length > 0) {
-      const raw = candidates[0].name;
-      return raw.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-    }
-  } catch {
-    /* 目录不可读时跳过 */
-  }
-  return null;
+function resolveProjectName(cwd, fallback) {
+  if (!cwd) return fallback || "DSH";
+  const dirname = path.basename(cwd);
+  // 转为 Title Case：dsh-plugins -> Dsh Plugins
+  return dirname.split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 }
 
 
@@ -586,6 +533,9 @@ function apply(ctx, config) {
   const log = (message) => ctx.logger.info(`[ima-sync] ${message}`);
   const warn = (message) => ctx.logger.warn(`[ima-sync] ${message}`);
 
+  /** 跟踪活跃的 DSH 工作区（cwd -> 项目名） */
+  const activeWorkspaces = new Map();
+
   /** 知识库名称 -> ID 映射（异步加载）。 */
   let kbNameMap = {};
   const kbNameMapReady = (async () => {
@@ -612,7 +562,7 @@ function apply(ctx, config) {
   /** 统一的「构建记录 -> 上传」入口。 */
   const uploadRecord = (session, record) => {
     const cwd = session?.header?.cwd || session?.cwd || process.cwd();
-    const project = resolveProjectName(cwd, cfg.projectsFile, cfg.defaultProject);
+    const project = resolveProjectName(cwd, cfg.defaultProject);
     console.log(`[ima-sync] 上传 | session=${session?.id?.slice(0,8)} | cwd=${cwd} | project=${project} | mode=${cfg.mode} | task=${record.task?.slice(0,40)}`);
     return (async () => {
       if (cfg.imaUploadBin && existsSync(cfg.imaUploadBin)) {
@@ -656,6 +606,11 @@ function apply(ctx, config) {
   ctx.on("session/event", (session, event) => {
     try {
       if (!isTopLevel(session)) return;
+      // 跟踪活跃工作区
+      const cwd = session?.header?.cwd || session?.cwd;
+      if (cwd && !activeWorkspaces.has(cwd)) {
+        activeWorkspaces.set(cwd, resolveProjectName(cwd, cfg.defaultProject));
+      }
       const state = stateFor(session);
       switch (event.type) {
         case "turn/start": {
@@ -811,29 +766,10 @@ function apply(ctx, config) {
         }
         if (req.method === "GET") {
           try {
-            // 从 Claude 会话目录自动检测项目
-            const claudeDir = path.join(HOME, ".claude", "projects");
+            // 返回已检测到的工作区项目
             const projects = [];
-            if (existsSync(claudeDir)) {
-              const entries = readdirSync(claudeDir, { withFileTypes: true });
-              for (const entry of entries) {
-                if (!entry.isDirectory()) continue;
-                const decoded = "/" + entry.name.replace(/^-/, "").replace(/-/g, "/");
-                if (!existsSync(decoded)) continue;
-                const name = path.basename(decoded).split(/[-_]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-                projects.push({ path: decoded, name, source: "claude" });
-              }
-            }
-            // 从 projects.json 补充手动映射
-            if (cfg.projectsFile && existsSync(cfg.projectsFile)) {
-              try {
-                const map = JSON.parse(readFileSync(cfg.projectsFile, "utf8"));
-                for (const [p, name] of Object.entries(map)) {
-                  if (!projects.some(pr => pr.path === p)) {
-                    projects.push({ path: p, name, source: "manual" });
-                  }
-                }
-              } catch {}
+            for (const [cwd, name] of activeWorkspaces.entries()) {
+              projects.push({ path: cwd, name, source: "dsh" });
             }
             projects.sort((a, b) => a.name.localeCompare(b.name));
             writeJson(res, 200, { projects, total: projects.length });
