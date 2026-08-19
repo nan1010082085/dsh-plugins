@@ -282,7 +282,7 @@ export function makeRoutes(deps) {
             writeJson(res, 400, { error: "server and tool are required" });
             return;
           }
-          const result = await clientManager.callTool(body.server, body.tool, body.args || {});
+          const result = await clientManager.callTool(body.server, body.tool, body.args || {}, body.timeoutMs);
           writeJson(res, 200, result);
         } catch (error) {
           writeJson(res, 500, { error: String(error?.message || error) });
