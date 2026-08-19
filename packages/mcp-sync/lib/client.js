@@ -288,15 +288,17 @@ window.__ModuleLoader__.load({
 		function McpPanel() {
 			var ref = useState("servers");
 			var tab = ref[0], setTab = ref[1];
+			var ref2 = useState(0);
+			var refreshKey = ref2[0], setRefreshKey = ref2[1];
 
-			var tabContent = tab === "servers" ? h(ServersTab, null) :
-				tab === "connections" ? h(ConnectionsTab, null) :
-				h(ToolsTab, null);
+			var tabContent = tab === "servers" ? h(ServersTab, { key: refreshKey }) :
+				tab === "connections" ? h(ConnectionsTab, { key: refreshKey }) :
+				h(ToolsTab, { key: refreshKey });
 
 			return h("div", { className: "mcp-panel" },
 				h("div", { className: "mcp-header" },
 					h("span", { className: "mcp-title" }, "MCP Manager"),
-					h("button", { className: "mcp-btn", onClick: function() { window.location.reload(); } }, "Refresh")
+					h("button", { className: "mcp-btn", onClick: function() { setRefreshKey(function(k) { return k + 1; }); } }, "Refresh")
 				),
 				h("div", { className: "mcp-tabs" },
 					TABS.map(function(t) {

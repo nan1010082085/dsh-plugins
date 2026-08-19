@@ -59,8 +59,15 @@ function buildToolDefinition(serverId, mcpTool, clientManager) {
     description: "[MCP:" + serverId + "] " + (mcpTool.description || mcpTool.name),
     parameters,
     output: {
-      // Use 'json' type - accepts any lossless JSON value
-      schema: { type: "json", description: "MCP tool result" },
+      // Use 'object' type with additionalProperties for MCP results
+      schema: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          content: { type: "json" },
+          error: { type: "string" },
+        },
+      },
       render: (_args, value) => {
         // value is the raw JSON returned by execute
         if (!value || typeof value !== "object") {
@@ -149,7 +156,14 @@ export function registerMcpCallTool(ctx, clientManager) {
       args: { type: "json", description: "Tool arguments as JSON (default: {})" },
     },
     output: {
-      schema: { type: "json" },
+      schema: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          content: { type: "json" },
+          error: { type: "string" },
+        },
+      },
       render: (_args, value) => {
         if (!value || typeof value !== "object") return [{ type: "text", text: String(value || "(empty)") }];
         if (value.error) return [{ type: "text", text: "[MCP error] " + value.error }];
@@ -189,7 +203,14 @@ export function registerMcpListTools(ctx, clientManager) {
       server: { type: "string", description: "Filter by server id (omit to list all)" },
     },
     output: {
-      schema: { type: "json" },
+      schema: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          servers: { type: "json" },
+          totalTools: { type: "number" },
+        },
+      },
       render: (_args, value) => {
         if (!value?.servers) return [{ type: "text", text: "No servers connected." }];
         const lines = [];
