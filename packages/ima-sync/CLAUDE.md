@@ -4,10 +4,13 @@
 
 将 DSH 对话进度自动上传到腾讯 IMA（笔记 + Work 知识库）。
 
-## 安装（强制）
+## 安装（任一方式）
 
 ```sh
-# 优先使用 dsh plugin 安装
+# GitHub 安装
+dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
+
+# npm 安装
 dsh plugin --profile web add dsh-plugin-ima-sync
 ```
 
@@ -16,8 +19,9 @@ dsh plugin --profile web add dsh-plugin-ima-sync
 1. 修改 `lib/index.js`（服务端）或 `lib/client.js`（客户端）
 2. 更新 `package.json` 的 `version`
 3. `cd packages/ima-sync && npm publish`
-4. `dsh plugin --profile web add dsh-plugin-ima-sync`
-5. 运行 `dsh web` 验证无报错
+4. **`./scripts/sync-repos.sh ima-sync`**（同步到独立 GitHub repo）
+5. `dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync`
+6. 运行 `dsh web` 验证无报错
 
 ## 文件结构
 

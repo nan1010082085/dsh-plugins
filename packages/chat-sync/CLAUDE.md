@@ -4,10 +4,13 @@
 
 将本地 Claude Code / Codex CLI / Cursor Agent 的对话自动导入为真正的 DSH 会话。
 
-## 安装（强制）
+## 安装（任一方式）
 
 ```sh
-# 优先使用 dsh plugin 安装
+# GitHub 安装
+dsh plugin --profile web add github:nan1010082085/dsh-chat-sync
+
+# npm 安装
 dsh plugin --profile web add dsh-chat-sync
 ```
 
@@ -16,8 +19,9 @@ dsh plugin --profile web add dsh-chat-sync
 1. 修改代码（`lib/index.js`, `lib/auto-import.js`, `lib/client.js` 等）
 2. 更新 `package.json` 的 `version`
 3. `cd packages/chat-sync && npm publish`
-4. `dsh plugin --profile web add dsh-chat-sync`
-5. 运行 `dsh web` 验证无报错
+4. **`./scripts/sync-repos.sh chat-sync`**（同步到独立 GitHub repo）
+5. `dsh plugin --profile web add github:nan1010082085/dsh-chat-sync`
+6. 运行 `dsh web` 验证无报错
 
 ## 文件结构
 

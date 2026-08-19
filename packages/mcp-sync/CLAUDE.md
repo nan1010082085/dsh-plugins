@@ -18,19 +18,24 @@
     模型直接调用
 ```
 
-## 安装（强制）
+## 安装（任一方式）
 
 ```sh
+# GitHub 安装
+dsh plugin --profile web add github:nan1010082085/dsh-mcp-sync
+
+# npm 安装
 dsh plugin --profile web add dsh-mcp-sync
 ```
 
-## 发布流程
+## 发布流程（强制）
 
 1. 修改 lib/ 下的文件
 2. 更新 package.json 的 version
-3. cd packages/mcp-sync && npm publish
-4. dsh plugin --profile web add dsh-mcp-sync
-5. 运行 dsh web 验证无报错
+3. `cd packages/mcp-sync && npm publish`
+4. **`./scripts/sync-repos.sh mcp-sync`**（同步到独立 GitHub repo）
+5. `dsh plugin --profile web add github:nan1010082085/dsh-mcp-sync`
+6. 运行 `dsh web` 验证无报错
 
 ## 文件结构
 
