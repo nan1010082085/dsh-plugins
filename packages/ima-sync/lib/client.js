@@ -207,6 +207,7 @@ window.__ModuleLoader__.load({
 			const [testing, setTesting] = useState(false);
 			const [status, setStatus] = useState(null);
 			const [projects, setProjects] = useState([]);
+			const [knowledgeBases, setKnowledgeBases] = useState([]);
 			const [useManualOverride, setUseManualOverride] = useState(false);
 			const [newProjectName, setNewProjectName] = useState("");
 			const [newProjectKbId, setNewProjectKbId] = useState("");
@@ -214,13 +215,15 @@ window.__ModuleLoader__.load({
 			useEffect(() => {
 				(async () => {
 					try {
-						const [data, projData] = await Promise.all([
+						const [data, projData, kbData] = await Promise.all([
 							getJSON(API.config),
 							getJSON("/api/dsh-ima-sync/projects").catch(() => ({ projects: [] })),
+							getJSON("/api/dsh-ima-sync/knowledge-bases").catch(() => ({ knowledgeBases: [] })),
 						]);
 						setConfig(data);
 						setUseManualOverride(!!(data.manualOverride?.clientId || data.manualOverride?.apiKey));
 						setProjects(projData.projects || []);
+						setKnowledgeBases(kbData.knowledgeBases || []);
 					} catch (err) {
 						setStatus({ type: "error", message: t("loadError") + err.message });
 					} finally {
@@ -368,7 +371,27 @@ window.__ModuleLoader__.load({
 						),
 						h("div", { className: "ims-field" },
 							h("label", { className: "ims-label" }, t("workKbId")),
-							h("input", { className: "ims-input", type: "text", placeholder: t("placeholderKb"), value: config.workKbId, onChange: (e) => handleChange("workKbId", e.target.value) }),
+							knowledgeBases.length > 0
+								? h("select", {
+									className: "ims-input",
+									value: config.workKbName || config.workKbId,
+									onChange: (e) => {
+										const selected = knowledgeBases.find(kb => kb.name === e.target.value);
+										if (selected) {
+											handleChange("workKbName", selected.name);
+											handleChange("workKbId", selected.id);
+										} else {
+											handleChange("workKbName", "");
+											handleChange("workKbId", "");
+										}
+									},
+								},
+									h("option", { value: "" }, t("placeholderKb")),
+									knowledgeBases.map((kb) =>
+										h("option", { key: kb.id, value: kb.name }, kb.name)
+									),
+								)
+								: h("input", { className: "ims-input", type: "text", placeholder: t("placeholderKb"), value: config.workKbId, onChange: (e) => handleChange("workKbId", e.target.value) }),
 						),
 					),
 					useManualOverride ? h("div", null,

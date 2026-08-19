@@ -117,46 +117,19 @@ function resolveProjectName(cwd, fallback) {
 
 /** 调用 IMA API 查询知识库列表，返回 { name -> id } 映射。 */
 async function fetchKnowledgeBaseMap(creds) {
-  const BASE_URL = "https://ima.qq.com";
   const map = {};
   let cursor = "";
 
   try {
     while (true) {
-      const res = await new Promise((resolve, reject) => {
-        const url = `${BASE_URL}/openapi/wiki/v1/get_addable_knowledge_base_list`;
-        const body = JSON.stringify({ cursor, limit: 50 });
-        const curl = spawn("curl", [
-          "-s", "-X", "POST", url,
-          "-H", "Content-Type: application/json",
-          "-H", `X-Ima-Clientid: ${creds.clientId}`,
-          "-H", `X-Ima-Apikey: ${creds.apiKey}`,
-          "-d", body,
-        ]);
-        let stdout = "";
-        let stderr = "";
-        curl.stdout.on("data", (chunk) => { stdout += chunk; });
-        curl.stderr.on("data", (chunk) => { stderr += chunk; });
-        curl.on("close", (code) => {
-          if (code !== 0) return reject(new Error(`curl exit ${code}: ${stderr}`));
-          try { resolve(JSON.parse(stdout)); } catch { reject(new Error(`JSON parse error: ${stdout}`)); }
-        });
-      });
-
-      if (res.code !== 0) {
-        console.warn(`[ima-sync] 查询知识库列表失败: ${res.msg || res.code}`);
-        break;
-      }
-
-      const list = res.data?.list || [];
+      const res = await callIma("openapi/wiki/v1/get_addable_knowledge_base_list", { cursor, limit: 50 }, creds);
+      const list = res.data?.addable_knowledge_base_list || res.data?.knowledge_list || [];
       for (const kb of list) {
-        if (kb.name && kb.knowledge_base_id) {
-          map[kb.name] = kb.knowledge_base_id;
-        }
+        if (kb.name && kb.id) map[kb.name] = kb.id;
       }
-
-      if (!res.data?.has_more || !list.length) break;
-      cursor = res.data.cursor || "";
+      if (res.data?.is_end) break;
+      cursor = res.data?.next_cursor || "";
+      if (!cursor) break;
     }
   } catch (err) {
     console.warn(`[ima-sync] 查询知识库列表异常: ${err.message}`);
@@ -773,6 +746,30 @@ function apply(ctx, config) {
             }
             projects.sort((a, b) => a.name.localeCompare(b.name));
             writeJson(res, 200, { projects, total: projects.length });
+          } catch (err) {
+            writeJson(res, 500, { error: err.message });
+          }
+        }
+      },
+    },
+    {
+      name: "ima-sync:knowledge-bases",
+      path: "/api/dsh-ima-sync/knowledge-bases",
+      handler: async (req, res) => {
+        if (!isLoopbackRequest(req)) {
+          writeJson(res, 403, { error: "loopback only" });
+          return;
+        }
+        if (req.method === "GET") {
+          try {
+            if (!cfg.clientId || !cfg.apiKey) {
+              writeJson(res, 200, { knowledgeBases: [], error: "未配置 IMA 凭证" });
+              return;
+            }
+            const creds = { clientId: cfg.clientId, apiKey: cfg.apiKey };
+            const nameMap = await fetchKnowledgeBaseMap(creds);
+            const knowledgeBases = Object.entries(nameMap).map(([name, id]) => ({ name, id }));
+            writeJson(res, 200, { knowledgeBases });
           } catch (err) {
             writeJson(res, 500, { error: err.message });
           }
