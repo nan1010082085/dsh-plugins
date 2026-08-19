@@ -1,6 +1,6 @@
 {
   "name": "dsh-mcp-sync",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "DSH plugin: connect to MCP servers, discover tools, and register them for direct model invocation with retry logic and statistics",
   "type": "module",
   "main": "lib/index.js",

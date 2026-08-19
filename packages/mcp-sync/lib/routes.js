@@ -36,7 +36,7 @@ const API = {
 
 function isIPv4Loopback(v4) {
   const parts = v4.split(".");
-  return parts.length === 4 && parts[0] === "127" && parts.every((p) => /^d{1,3}$/.test(p) && Number(p) <= 255);
+  return parts.length === 4 && parts[0] === "127" && parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255);
 }
 
 function isLoopbackAddress(address) {
