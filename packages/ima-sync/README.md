@@ -112,4 +112,4 @@ node --check lib/index.js   # 语法检查
 
 ## License
 
-MIT
+[MIT](./LICENSE)

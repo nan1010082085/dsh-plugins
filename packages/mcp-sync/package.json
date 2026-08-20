@@ -13,7 +13,7 @@
     "lib",
     "cordis.patch.yml",
     "README.md",
-    "CLAUDE.md"
+    "LICENSE"
   ],
   "license": "MIT",
   "repository": {

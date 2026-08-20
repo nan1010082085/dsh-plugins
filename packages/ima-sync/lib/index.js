@@ -83,8 +83,16 @@ function resolveConfig(config) {
       savedConfig = JSON.parse(readFileSync(configFile, "utf8"));
     }
   } catch {}
-  const base = { ...savedConfig, ...(config && typeof config === "object" ? config : {}) };
-  // 无论是否经过 schemastery 校验，都补齐默认值（对原始 config 也健壮）。
+  // 合并优先级：config（用户显式配置）> savedConfig（本地持久化）> 默认值
+  // 注意：config 经过 schemastery 填充了默认值（空串、"project+date"），不能直接覆盖 savedConfig
+  const rawConfig = config && typeof config === "object" ? config : {};
+  const base = { ...savedConfig };
+  for (const [k, v] of Object.entries(rawConfig)) {
+    // 只在 config 值非空时覆盖（空串视为 schemastery 默认值，不覆盖 savedConfig）
+    if (v !== "" && v !== null && v !== undefined) {
+      base[k] = v;
+    }
+  }
 
   // 手动配置覆盖（最高优先级）
   const manualOverride = base.manualOverride || {};

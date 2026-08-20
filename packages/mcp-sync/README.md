@@ -134,4 +134,4 @@ node --check lib/index.js lib/sources.js lib/routes.js lib/mcp-client.js lib/mcp
 
 ## License
 
-MIT
+[MIT](./LICENSE)

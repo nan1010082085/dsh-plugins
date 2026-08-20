@@ -94,4 +94,4 @@ node tests/client-load.mjs   # 客户端加载测试
 
 ## License
 
-MIT
+[MIT](./LICENSE)
