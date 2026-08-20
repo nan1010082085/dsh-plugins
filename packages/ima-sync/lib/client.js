@@ -253,9 +253,7 @@ window.__ModuleLoader__.load({
 				setSaving(true);
 				try {
 					const saveConfig = { ...config };
-					if (!useManualOverride) {
-						saveConfig.manualOverride = { clientId: "", apiKey: "", workKbId: "" };
-					}
+					// 不再清空 manualOverride，保留用户之前填的值
 					await postJSON(API.save, saveConfig);
 					showToast("success", t("saveSuccess"));
 				} catch (err) {
