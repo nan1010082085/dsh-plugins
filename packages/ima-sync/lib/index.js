@@ -66,11 +66,9 @@ const HOME = os.homedir();
 
 /* ───────────────────────── 小工具 ───────────────────────── */
 
-/** 凭证解析：manualOverride 最优先，跳过占位符 "***"。 */
+/** 凭证解析：override 有值且非占位符时使用，否则返回空（让调用方回退到环境变量/文件）。 */
 function resolveCred(override, base) {
-  for (const v of [override, base]) {
-    if (v && v !== "***") return v;
-  }
+  if (override && override !== "***") return override;
   return "";
 }
 
