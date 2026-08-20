@@ -66,12 +66,6 @@ const HOME = os.homedir();
 
 /* ───────────────────────── 小工具 ───────────────────────── */
 
-/** 凭证解析：override 有值且非占位符时使用，否则返回空（让调用方回退到环境变量/文件）。 */
-function resolveCred(override, base) {
-  if (override && override !== "***") return override;
-  return "";
-}
-
 function readTrimmed(file) {
   try {
     return readFileSync(file, "utf8").trim();
@@ -106,8 +100,8 @@ function resolveConfig(config) {
   return {
     enabled: base.enabled ?? true,
     mode: base.mode || "project+date",
-    clientId: resolveCred(manualOverride.clientId, base.clientId) || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
-    apiKey: resolveCred(manualOverride.apiKey, base.apiKey) || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
+    clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
+    apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
     workKbId: manualOverride.workKbId || base.workKbId || "",
     projectKnowledgeBases: base.projectKnowledgeBases || {},
     imaUploadBin: base.imaUploadBin || "",  // 默认不用本地脚本，直接走 API
@@ -616,8 +610,8 @@ function apply(ctx, config) {
           const safeConfig = {
             enabled: merged.enabled ?? true,
             mode: merged.mode || "project+date",
-            clientId: merged.clientId ? "***" : "",
-            apiKey: merged.apiKey ? "***" : "",
+            clientId: merged.clientId || "",
+            apiKey: merged.apiKey || "",
             workKbId: merged.workKbId || "",
             workKbName: merged.workKbName || "",
             imaUploadBin: merged.imaUploadBin || "",
