@@ -74,28 +74,44 @@ function readTrimmed(file) {
   }
 }
 
-function resolveConfig(config) {
-  // 合并本地保存的配置
-  let savedConfig = {};
+/** 读取本地持久化配置（~/.config/ima/dsh-config.json）。读取失败返回空对象。 */
+function readSavedConfig() {
   try {
     const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
-    if (existsSync(configFile)) {
-      savedConfig = JSON.parse(readFileSync(configFile, "utf8"));
-    }
+    if (existsSync(configFile)) return JSON.parse(readFileSync(configFile, "utf8"));
   } catch {}
+  return {};
+}
+
+/** 逐字段合并 manualOverride：非空字段生效，空字段保留已保存值。
+ *  禁止对象整体替换 —— 那会把用户已保存的凭证清空（v0.7.x~0.8.1 反复出问题的根源）。 */
+function mergeManualOverride(saved, override) {
+  const merged = { ...(saved && typeof saved === "object" ? saved : {}) };
+  if (override && typeof override === "object") {
+    for (const [k, v] of Object.entries(override)) {
+      if (v !== "" && v !== null && v !== undefined) merged[k] = v;
+    }
+  }
+  return merged;
+}
+
+function resolveConfig(config) {
+  // 合并本地保存的配置
+  const savedConfig = readSavedConfig();
   // 合并优先级：config（用户显式配置）> savedConfig（本地持久化）> 默认值
   // 注意：config 经过 schemastery 填充了默认值（空串、"project+date"），不能直接覆盖 savedConfig
   const rawConfig = config && typeof config === "object" ? config : {};
   const base = { ...savedConfig };
   for (const [k, v] of Object.entries(rawConfig)) {
+    if (k === "manualOverride") continue; // 逐字段合并，见下
     // 只在 config 值非空时覆盖（空串视为 schemastery 默认值，不覆盖 savedConfig）
     if (v !== "" && v !== null && v !== undefined) {
       base[k] = v;
     }
   }
 
-  // 手动配置覆盖（最高优先级）
-  const manualOverride = base.manualOverride || {};
+  // 手动配置覆盖（最高优先级）：逐字段合并，空字段不丢已保存值
+  const manualOverride = mergeManualOverride(savedConfig.manualOverride, rawConfig.manualOverride);
 
   return {
     enabled: base.enabled ?? true,
@@ -103,6 +119,7 @@ function resolveConfig(config) {
     clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
     apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
     workKbId: manualOverride.workKbId || base.workKbId || "",
+    workKbName: base.workKbName || "",
     projectKnowledgeBases: base.projectKnowledgeBases || {},
     imaUploadBin: base.imaUploadBin || "",  // 默认不用本地脚本，直接走 API
     projectsFile: base.projectsFile || "",  // 默认自动检测，不依赖手动文件
@@ -367,6 +384,14 @@ function buildTurnRecord(state, reason, cfg) {
   return { task, summary, detail: "" };
 }
 
+/** 手动上传时的会话摘要（取当前轮次状态，状态缺失时兜底）。 */
+function buildSessionDigest(state, cfg) {
+  const s = state || { turn: 0, prompt: "", lastAssistant: "" };
+  const task = oneLine(s.prompt).slice(0, 60) || `会话摘要 #${s.turn || 1}`;
+  const summary = truncate(s.lastAssistant || "（无回复）", cfg.maxDetailLength);
+  return { task, summary, detail: "" };
+}
+
 
 
 /* ───────────────────────── Web API 路由 ───────────────────────── */
@@ -578,7 +603,7 @@ function apply(ctx, config) {
         try {
           const session = invocation.agent?.session;
           if (!session) return { kind: "error", text: "❌ 找不到当前会话。" };
-          const record = buildSessionDigest(session, cfg);
+          const record = buildSessionDigest(states.get(session.id), cfg);
           const res = await uploadRecord(session, record);
           const note = res.noteId ? `（note_id: ${res.noteId}）` : "";
           return { kind: "success", text: `✅ 已上传当前会话进度到 IMA ${note}` };
@@ -600,39 +625,35 @@ function apply(ctx, config) {
           return;
         }
         if (req.method === "GET") {
-          // 合并已保存的配置
-          let saved = {};
-          try {
-            const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
-            if (existsSync(configFile)) saved = JSON.parse(readFileSync(configFile, "utf8"));
-          } catch {}
-          // cfg 已经是 resolveConfig 解析后的值（含 env/file 回退），saved 不能覆盖它
-          const merged = { ...saved, ...cfg };
+          // 表单只回显文件里保存的原始值（saved），运行时解析结果（env/file 回退后的凭证）
+          // 不得回显到表单，否则保存时会被原样写回文件，污染配置来源
+          const saved = readSavedConfig();
+          const mo = mergeManualOverride(saved.manualOverride, config && config.manualOverride);
           // 凭证来源：manualOverride > dsh-config.json > env > file
           let credentialSource = "none";
-          const mo = merged.manualOverride || {};
           if (mo.clientId || mo.apiKey) credentialSource = "manual";
           else if (saved.clientId || saved.apiKey) credentialSource = "config";
           else if (process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID) credentialSource = "env";
           else if (readTrimmed(path.join(HOME, ".config/ima/client_id"))) credentialSource = "file";
+          const runtime = resolveConfig(config); // 仅用于计算 hasCredentials，不进表单
           const safeConfig = {
-            enabled: merged.enabled ?? true,
-            mode: merged.mode || "project+date",
-            clientId: merged.clientId || "",
-            apiKey: merged.apiKey || "",
-            workKbId: merged.workKbId || "",
-            workKbName: merged.workKbName || "",
-            hasCredentials: !!(merged.clientId && merged.apiKey),
+            enabled: saved.enabled ?? true,
+            mode: saved.mode || "project+date",
+            clientId: saved.clientId || "",
+            apiKey: saved.apiKey || "",
+            workKbId: saved.workKbId || "",
+            workKbName: saved.workKbName || "",
+            hasCredentials: !!(runtime.clientId && runtime.apiKey),
             credentialSource,
-            imaUploadBin: merged.imaUploadBin || "",
-            projectsFile: merged.projectsFile || "",
-            cacheDir: merged.cacheDir || "",
-            defaultProject: merged.defaultProject || "",
-            maxPromptLength: merged.maxPromptLength ?? 300,
-            maxDetailLength: merged.maxDetailLength ?? 20000,
-            timeoutMs: merged.timeoutMs ?? 120000,
-            manualOverride: merged.manualOverride || { clientId: "", apiKey: "", workKbId: "" },
-            projectKnowledgeBases: merged.projectKnowledgeBases || {},
+            imaUploadBin: saved.imaUploadBin || "",
+            projectsFile: saved.projectsFile || "",
+            cacheDir: saved.cacheDir || "",
+            defaultProject: saved.defaultProject || "",
+            maxPromptLength: saved.maxPromptLength ?? 300,
+            maxDetailLength: saved.maxDetailLength ?? 20000,
+            timeoutMs: saved.timeoutMs ?? 120000,
+            manualOverride: mo,
+            projectKnowledgeBases: saved.projectKnowledgeBases || {},
           };
           writeJson(res, 200, safeConfig);
           return;
@@ -641,10 +662,16 @@ function apply(ctx, config) {
           try {
             const raw = await readBody(req);
             // 过滤占位符 "***"，避免存入 dsh-config.json 后被当真实凭证
-            const newConfig = JSON.parse(JSON.stringify(raw, (k, v) => v === "***" ? "" : v));
+            const clean = JSON.parse(JSON.stringify(raw, (k, v) => (v === "***" ? "" : v)));
+            // 运行时状态字段是 GET 计算出来的，不是用户配置，禁止落盘
+            delete clean.hasCredentials;
+            delete clean.credentialSource;
+            // 合并写入：客户端没提交的字段保留文件原值，禁止整文件覆盖
+            const prev = readSavedConfig();
+            const next = { ...prev, ...clean };
             const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
             mkdirSync(path.dirname(configFile), { recursive: true });
-            writeFileSync(configFile, JSON.stringify(newConfig, null, 2));
+            writeFileSync(configFile, JSON.stringify(next, null, 2));
             log("配置已保存到 " + configFile);
             writeJson(res, 200, { success: true, message: "配置已保存" });
           } catch (err) {
@@ -739,4 +766,4 @@ function apply(ctx, config) {
     .map((route) => ctx.webServer.register(route));
 }
 
-export { Config, apply, inject, name };
+export { Config, apply, inject, name, resolveConfig };
