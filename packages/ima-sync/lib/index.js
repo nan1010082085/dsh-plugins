@@ -96,16 +96,12 @@ function resolveConfig(config) {
 
   // 手动配置覆盖（最高优先级）
   const manualOverride = base.manualOverride || {};
-  
-  // 凭证解析：跳过占位符 "***"，回退到环境变量/本地文件
-  const rawClientId = manualOverride.clientId || base.clientId || "";
-  const rawApiKey = manualOverride.apiKey || base.apiKey || "";
 
   return {
     enabled: base.enabled ?? true,
     mode: base.mode || "project+date",
-    clientId: (rawClientId && rawClientId !== "***") ? rawClientId : (process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id"))),
-    apiKey: (rawApiKey && rawApiKey !== "***") ? rawApiKey : (process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key"))),
+    clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
+    apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
     workKbId: manualOverride.workKbId || base.workKbId || "",
     projectKnowledgeBases: base.projectKnowledgeBases || {},
     imaUploadBin: base.imaUploadBin || "",  // 默认不用本地脚本，直接走 API
