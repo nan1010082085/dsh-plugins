@@ -635,8 +635,9 @@ function apply(ctx, config) {
         }
         if (req.method === "POST") {
           try {
-            const newConfig = await readBody(req);
-            // 保存到本地配置文件
+            const raw = await readBody(req);
+            // 过滤占位符 "***"，避免存入 dsh-config.json 后被当真实凭证
+            const newConfig = JSON.parse(JSON.stringify(raw, (k, v) => v === "***" ? "" : v));
             const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
             mkdirSync(path.dirname(configFile), { recursive: true });
             writeFileSync(configFile, JSON.stringify(newConfig, null, 2));
