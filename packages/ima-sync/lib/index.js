@@ -606,7 +606,15 @@ function apply(ctx, config) {
             const configFile = path.join(HOME, ".config", "ima", "dsh-config.json");
             if (existsSync(configFile)) saved = JSON.parse(readFileSync(configFile, "utf8"));
           } catch {}
-          const merged = { ...cfg, ...saved };
+          // cfg 已经是 resolveConfig 解析后的值（含 env/file 回退），saved 不能覆盖它
+          const merged = { ...saved, ...cfg };
+          // 凭证来源：manualOverride > dsh-config.json > env > file
+          let credentialSource = "none";
+          const mo = merged.manualOverride || {};
+          if (mo.clientId || mo.apiKey) credentialSource = "manual";
+          else if (saved.clientId || saved.apiKey) credentialSource = "config";
+          else if (process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID) credentialSource = "env";
+          else if (readTrimmed(path.join(HOME, ".config/ima/client_id"))) credentialSource = "file";
           const safeConfig = {
             enabled: merged.enabled ?? true,
             mode: merged.mode || "project+date",
@@ -614,6 +622,8 @@ function apply(ctx, config) {
             apiKey: merged.apiKey || "",
             workKbId: merged.workKbId || "",
             workKbName: merged.workKbName || "",
+            hasCredentials: !!(merged.clientId && merged.apiKey),
+            credentialSource,
             imaUploadBin: merged.imaUploadBin || "",
             projectsFile: merged.projectsFile || "",
             cacheDir: merged.cacheDir || "",
