@@ -66,6 +66,14 @@ const HOME = os.homedir();
 
 /* ───────────────────────── 小工具 ───────────────────────── */
 
+/** 凭证解析：manualOverride 最优先，跳过占位符 "***"。 */
+function resolveCred(override, base) {
+  for (const v of [override, base]) {
+    if (v && v !== "***") return v;
+  }
+  return "";
+}
+
 function readTrimmed(file) {
   try {
     return readFileSync(file, "utf8").trim();
@@ -100,8 +108,8 @@ function resolveConfig(config) {
   return {
     enabled: base.enabled ?? true,
     mode: base.mode || "project+date",
-    clientId: manualOverride.clientId || base.clientId || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
-    apiKey: manualOverride.apiKey || base.apiKey || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
+    clientId: resolveCred(manualOverride.clientId, base.clientId) || process.env.IMA_OPENAPI_CLIENTID || process.env.IMA_CLIENT_ID || readTrimmed(path.join(HOME, ".config/ima/client_id")),
+    apiKey: resolveCred(manualOverride.apiKey, base.apiKey) || process.env.IMA_OPENAPI_APIKEY || process.env.IMA_API_KEY || readTrimmed(path.join(HOME, ".config/ima/api_key")),
     workKbId: manualOverride.workKbId || base.workKbId || "",
     projectKnowledgeBases: base.projectKnowledgeBases || {},
     imaUploadBin: base.imaUploadBin || "",  // 默认不用本地脚本，直接走 API
