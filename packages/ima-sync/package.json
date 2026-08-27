@@ -28,12 +28,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nan1010082085/dsh-plugins.git",
-    "directory": "packages/ima-sync"
+    "url": "git+https://github.com/nan1010082085/dsh-plugin-ima-sync.git"
   },
-  "homepage": "https://github.com/nan1010082085/dsh-plugins#readme",
+  "homepage": "https://github.com/nan1010082085/dsh-plugin-ima-sync#readme",
   "bugs": {
-    "url": "https://github.com/nan1010082085/dsh-plugins/issues"
+    "url": "https://github.com/nan1010082085/dsh-plugin-ima-sync/issues"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org"

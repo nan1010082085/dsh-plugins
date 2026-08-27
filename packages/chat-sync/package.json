@@ -19,12 +19,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nan1010082085/dsh-plugins.git",
-    "directory": "packages/chat-sync"
+    "url": "git+https://github.com/nan1010082085/dsh-chat-sync.git"
   },
-  "homepage": "https://github.com/nan1010082085/dsh-plugins#readme",
+  "homepage": "https://github.com/nan1010082085/dsh-chat-sync#readme",
   "bugs": {
-    "url": "https://github.com/nan1010082085/dsh-plugins/issues"
+    "url": "https://github.com/nan1010082085/dsh-chat-sync/issues"
   },
   "keywords": [
     "dsh",

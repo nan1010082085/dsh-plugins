@@ -1,6 +1,6 @@
 # dsh-chat-sync
 
-[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--chat--sync-blue?logo=github)](https://github.com/nan1010082085/dsh-chat-sync)
 [![npm](https://img.shields.io/badge/npm-dsh--chat--sync-green?logo=npm)](https://www.npmjs.com/package/dsh-chat-sync)
 
 DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor Agent 的对话自动导入为 DSH 会话**，在侧边栏统一查看。
@@ -41,7 +41,10 @@ DSH（DeepSeek Harness）插件：**把本地 Claude Code / Codex CLI / Cursor A
 ## 安装
 
 ```sh
-# 使用 dsh plugin 安装
+# 从 GitHub 安装（独立仓库，已发布 npm）
+dsh plugin --profile web add github:nan1010082085/dsh-chat-sync
+
+# 或从 npm 安装
 dsh plugin --profile web add dsh-chat-sync
 ```
 

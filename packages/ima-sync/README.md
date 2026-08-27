@@ -1,6 +1,6 @@
 # dsh-plugin-ima-sync
 
-[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugin--ima--sync-blue?logo=github)](https://github.com/nan1010082085/dsh-plugin-ima-sync)
 [![npm](https://img.shields.io/badge/npm-dsh--plugin--ima--sync-green?logo=npm)](https://www.npmjs.com/package/dsh-plugin-ima-sync)
 
 DSH（DeepSeek Harness）插件：**把 DSH 的对话进度自动上传到腾讯 IMA**（ima 笔记 + Work 知识库）。
@@ -27,7 +27,10 @@ DSH（DeepSeek Harness）插件：**把 DSH 的对话进度自动上传到腾讯
 ## 安装
 
 ```sh
-# 使用 dsh plugin 安装
+# 从 GitHub 安装（独立仓库，已发布 npm）
+dsh plugin --profile web add github:nan1010082085/dsh-plugin-ima-sync
+
+# 或从 npm 安装
 dsh plugin --profile web add dsh-plugin-ima-sync
 ```
 

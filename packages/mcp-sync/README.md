@@ -1,11 +1,11 @@
 # dsh-mcp-sync
 
-[![GitHub](https://img.shields.io/badge/GitHub-dsh--plugins-blue?logo=github)](https://github.com/nan1010082085/dsh-plugins)
+[![GitHub](https://img.shields.io/badge/GitHub-dsh--mcp--sync-blue?logo=github)](https://github.com/nan1010082085/dsh-mcp-sync)
 [![npm](https://img.shields.io/badge/npm-dsh--mcp--sync-green?logo=npm)](https://www.npmjs.com/package/dsh-mcp-sync)
 
 DSH（DeepSeek Harness）插件：**连接 MCP 服务器、发现工具并注册到 DSH 工具系统**，让模型可以直接调用 MCP 工具。
 
-**v0.6.0 新特性：**
+**v0.7.0 新特性：**
 - ✨ 自动重试机制：连接失败时自动重试（最多3次）
 - 📊 统计信息跟踪：连接成功率、工具调用统计
 - 🏥 健康检查端点：实时监控插件状态
