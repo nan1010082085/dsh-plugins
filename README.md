@@ -9,9 +9,9 @@ DSH（DeepSeek Harness）插件 monorepo。每个包是一个独立可安装的 
 
 | 包 | 说明 | 版本 |
 | --- | --- | --- |
-| [`packages/chat-sync`](./packages/chat-sync) | **对话同步**：把本地 Claude Code / Codex CLI / Cursor Agent 的对话同步进 DSH Web GUI | 0.3.2 |
-| [`packages/ima-sync`](./packages/ima-sync) | **IMA 上传**：把 DSH 对话进度自动上传到腾讯 IMA（每日笔记 + Work 知识库） | 0.6.7 |
-| [`packages/mcp-sync`](./packages/mcp-sync) | **MCP 同步**：扫描本地 MCP 配置，连接服务器，注册工具供模型直接调用 | 0.5.6 |
+| [`packages/chat-sync`](./packages/chat-sync) | **对话同步**：把本地 Claude Code / Codex CLI / Cursor Agent 的对话同步进 DSH Web GUI | 0.3.4 |
+| [`packages/ima-sync`](./packages/ima-sync) | **IMA 上传**：把 DSH 对话进度自动上传到腾讯 IMA（每日笔记 + Work 知识库） | 0.8.2 |
+| [`packages/mcp-sync`](./packages/mcp-sync) | **MCP 同步**：扫描本地 MCP 配置，连接服务器，注册工具供模型直接调用 | 0.7.0 |
 
 ## 安装
 

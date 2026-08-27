@@ -113,9 +113,9 @@ dsh plugin --profile web add dsh-mcp-sync
 | /api/dsh-mcp-sync/disconnect | POST | 断开连接 |
 | /api/dsh-mcp-sync/tools | GET | 列出所有已发现的 MCP 工具 |
 | /api/dsh-mcp-sync/call | POST | 调用 MCP 工具 |
-| /api/dsh-mcp-sync/stats | GET | 获取统计信息（v0.6.0） |
-| /api/dsh-mcp-sync/reconnect | POST | 重新连接失败的服务器（v0.6.0） |
-| /api/dsh-mcp-sync/health | GET | 健康检查（v0.6.0） |
+| /api/dsh-mcp-sync/stats | GET | 获取统计信息 |
+| /api/dsh-mcp-sync/reconnect | POST | 重新连接失败的服务器 |
+| /api/dsh-mcp-sync/health | GET | 健康检查 |
 
 ## 侧边栏
 
@@ -124,7 +124,7 @@ dsh plugin --profile web add dsh-mcp-sync
 - **Servers**: 扫描到的 MCP 服务器配置
 - **Connections**: 连接状态和工具数量
 - **Tools**: 所有已发现的 MCP 工具列表
-- **Stats**: 统计信息（v0.6.0）- 运行时间、连接成功率、工具调用统计
+- **Stats**: 统计信息 - 运行时间、连接成功率、工具调用统计
 
 ## 开发
 
