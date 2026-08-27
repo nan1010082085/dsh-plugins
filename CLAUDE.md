@@ -2,23 +2,46 @@
 
 ## 发布流程（强制，每次修改必须遵循）
 
+### 快捷方式（推荐）
+
+使用发布脚本自动完成所有步骤：
+
+```bash
+./scripts/publish.sh <plugin> [--patch|--minor|--major]
+
+# 示例
+./scripts/publish.sh ima-sync --patch   # 修复版本
+./scripts/publish.sh chat-sync --minor  # 新功能
+./scripts/publish.sh mcp-sync --major   # 破坏性变更
+```
+
+脚本会自动执行：
+1. 更新版本号（根据 semver）
+2. 同步 README 到独立 GitHub repo
+3. 发布到 npm
+4. 更新 CLAUDE.md 中的版本号
+
+### 手动流程
+
 1. 修改插件代码（`packages/<plugin>/lib/`）
 2. 更新 `package.json` 中的 `version`（遵循 semver：patch=修复、minor=新功能、major=破坏性变更）
-3. 发布到 npm：`cd packages/<plugin> && npm publish`
-4. **同步到独立 GitHub repo**：`./scripts/sync-repos.sh <plugin>` 或 `./scripts/sync-repos.sh`（全部）
-5. 安装到 profile：`dsh plugin --profile web add github:nan1010082085/<repo-name>`
-6. 验证：运行 `dsh web` 确认无报错
+3. **同步 README 到 GitHub**：`./scripts/sync-repos.sh <plugin>`
+4. 发布到 npm：`cd packages/<plugin> && npm publish`
+5. 更新 CLAUDE.md 中的版本号
+6. 安装到 profile：`dsh plugin --profile web add github:nan1010082085/<repo-name>`
+7. 验证：运行 `dsh web` 确认无报错
 
 ### 同步规则（强制）
 
-**每次发布 npm 后，必须同步到独立 GitHub repo，保证两种安装方式版本一致：**
+**发布前必须先同步 README 到 GitHub，确保文档一致：**
 
 ```bash
-# 发布后必须执行
-npm publish                    # 1. 发布到 npm
-./scripts/sync-repos.sh        # 2. 同步到所有独立 repo
-# 或单个
-./scripts/sync-repos.sh ima-sync
+# 推荐使用发布脚本（自动完成所有步骤）
+./scripts/publish.sh ima-sync --patch
+
+# 手动流程
+./scripts/sync-repos.sh ima-sync  # 1. 先同步 README 到 GitHub
+npm publish                        # 2. 再发布到 npm
 ```
 
 **禁止只发布 npm 不同步 GitHub，或只同步 GitHub 不发布 npm。**

@@ -46,13 +46,11 @@ sync_package() {
   tmp_dir="$(mktemp -d)"
   trap "rm -rf '$tmp_dir'" EXIT
 
-  # 复制包内容到临时目录
+  # 复制包内容到临时目录（包含插件自己的 README.md）
   cp -R "$pkg_dir"/. "$tmp_dir"/
 
-  # 复制根目录的公共文件（如果存在）
-  for f in LICENSE README.md; do
-    [[ -f "$f" ]] && cp "$f" "$tmp_dir/" 2>/dev/null || true
-  done
+  # 复制 LICENSE（如果存在）
+  [[ -f LICENSE ]] && cp LICENSE "$tmp_dir/" 2>/dev/null || true
 
   # 初始化 git 并推送
   cd "$tmp_dir"
