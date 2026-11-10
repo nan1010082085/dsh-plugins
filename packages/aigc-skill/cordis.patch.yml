@@ -1,0 +1,17 @@
+# dsh-plugin-aigc-skill bundle patch: register the aigc-skill plugin row.
+#
+# AIGC 漫剧创作技能套件：18 个 skill + shared 规则词典 + tools 机器闸门随包分发，
+# 设置面板提供技能文档浏览、闸门状态与默认风格配置。
+# 技能文件只读包内路径，不写 ~/.claude/skills，不读写 ~/.workbuddy。
+# 安装后如需调整配置，在 profile 的 cordis.patch.yml 中按 id 覆盖：
+#
+#   - id: aigc-skill
+#     config:
+#       enabled: true
+#       # defaultStyle: 'style-cg-refined'   # 一部剧锁 1 种风格
+
+- insert:
+    - id: aigc-skill
+      name: 'dsh-plugin-aigc-skill'
+      config:
+        enabled: true

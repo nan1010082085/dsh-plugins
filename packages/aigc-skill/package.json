@@ -1,0 +1,60 @@
+{
+  "name": "dsh-plugin-aigc-skill",
+  "version": "0.1.1",
+  "description": "DSH plugin: AIGC 漫剧创作技能套件（18 skills + shared 规则词典 + tools 机器闸门）的只读文档与状态面板",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib",
+    "skills",
+    "shared",
+    "tools",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "plugin",
+    "aigc",
+    "skills",
+    "drama",
+    "storyboard",
+    "deepseek-harness"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nan1010082085/dsh-plugin-aigc-skill.git"
+  },
+  "homepage": "https://github.com/nan1010082085/dsh-plugin-aigc-skill#readme",
+  "bugs": {
+    "url": "https://github.com/nan1010082085/dsh-plugin-aigc-skill/issues"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  }
+}

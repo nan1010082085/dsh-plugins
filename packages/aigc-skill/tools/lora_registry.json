@@ -1,0 +1,47 @@
+{
+ "_doc": "视觉元数据注册表（占位示例，2026-11-01 脱敏版）。真实注册表存项目侧（assets.json/Notion），剧内数据勿写入本文件。schema：各组条目 {path, trigger_words, weight_range, default_weight, ref_role?, ref_image?, variants?, trained}；即梦后端用 trigger_words+ref_role（无 LoRA），SD/ComfyUI 后端用 path+<lora:> 标签。",
+ "character": {
+  "角色名-基础形象X": {
+   "path": null,
+   "trigger_words": "1boy, short_hair, generic_feature_placeholder",
+   "weight_range": [0.75, 0.9],
+   "default_weight": 0.85,
+   "ref_role": "角色全身设定占位描述",
+   "ref_image": "人物-角色名",
+   "trained": false
+  }
+ },
+ "style": {
+  "style-名称": {
+   "path": null,
+   "trigger_words": "style_keywords_placeholder",
+   "weight_range": [0.5, 0.7],
+   "default_weight": 0.6,
+   "trained": false
+  }
+ },
+ "detail": {
+  "detail-名称": {
+   "path": null,
+   "trigger_words": "detail_keywords_placeholder",
+   "weight_range": [0.6, 0.8],
+   "default_weight": 0.8,
+   "trained": false
+  }
+ },
+ "concept": {
+  "道具名-状态": {
+   "path": null,
+   "trigger_words": "prop_keywords_placeholder",
+   "weight_range": [0.6, 0.9],
+   "default_weight": 0.75,
+   "ref_role": "道具描述占位",
+   "ref_image": "道具-道具名-状态",
+   "variants": {
+    "状态A": "道具-道具名-状态A",
+    "状态B": "道具-道具名-状态B"
+   },
+   "trained": false
+  }
+ }
+}

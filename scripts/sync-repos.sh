@@ -23,6 +23,7 @@ get_repo_name() {
     ima-sync)  echo "dsh-plugin-ima-sync" ;;
     chat-sync) echo "dsh-chat-sync" ;;
     mcp-sync)  echo "dsh-mcp-sync" ;;
+    aigc-skill) echo "dsh-plugin-aigc-skill" ;;
     *)         echo "" ;;
   esac
 }
@@ -70,7 +71,7 @@ sync_package() {
 main() {
   local target="${1:-all}"
   if [[ "$target" == "all" ]]; then
-    for pkg in ima-sync chat-sync mcp-sync; do
+    for pkg in ima-sync chat-sync mcp-sync aigc-skill; do
       sync_package "$pkg"
     done
   else

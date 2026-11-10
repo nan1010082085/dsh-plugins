@@ -1,5 +1,11 @@
 # dsh-plugins 开发规则
 
+## 版本发布规则（强制，违反即错误）
+
+- ❌ **禁止无代码变更就升级版本号**：必须有实际的代码/文档修改才能升版
+- ❌ **禁止私自发布新版本**：必须收到用户明确指令后才能执行发布
+- ❌ **仅能发布已配置的环境**（如 npmjs.org），**未配置的发布目标必须询问用户确认**后才能操作
+
 ## 发布流程（强制，每次修改必须遵循）
 
 ### 快捷方式（推荐）
@@ -53,6 +59,7 @@ npm publish                        # 2. 再发布到 npm
 | ima-sync | dsh-plugin-ima-sync | github:nan1010082085/dsh-plugin-ima-sync | IMA 上传 |
 | chat-sync | dsh-chat-sync | github:nan1010082085/dsh-chat-sync | 对话同步 |
 | mcp-sync | dsh-mcp-sync | github:nan1010082085/dsh-mcp-sync | MCP 同步 |
+| aigc-skill | dsh-plugin-aigc-skill | github:nan1010082085/dsh-plugin-aigc-skill | AIGC 漫剧技能套件（skills/shared/tools 随包分发） |
 
 ### 安装方式
 

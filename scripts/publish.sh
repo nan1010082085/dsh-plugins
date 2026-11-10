@@ -5,6 +5,7 @@
 #   ./scripts/publish.sh <plugin> [--patch|--minor|--major]
 #   ./scripts/publish.sh ima-sync --patch
 #   ./scripts/publish.sh chat-sync --minor
+#   ./scripts/publish.sh aigc-skill --patch
 #
 # 流程:
 #   1. 更新版本号（根据参数）
@@ -29,7 +30,7 @@ err() { echo -e "${RED}[error]${NC} $*" >&2; }
 # 检查参数
 if [[ $# -lt 1 ]]; then
   err "用法: $0 <plugin> [--patch|--minor|--major]"
-  err "  plugin: ima-sync | chat-sync | mcp-sync"
+  err "  plugin: ima-sync | chat-sync | mcp-sync | aigc-skill"
   exit 1
 fi
 
@@ -38,7 +39,7 @@ VERSION_TYPE="${2:---patch}"  # 默认 patch
 
 # 验证插件名
 case "$PLUGIN" in
-  ima-sync|chat-sync|mcp-sync) ;;
+  ima-sync|chat-sync|mcp-sync|aigc-skill) ;;
   *) err "未知插件: $PLUGIN"; exit 1 ;;
 esac
 
